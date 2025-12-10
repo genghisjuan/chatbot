@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Pass all required environment variables from host .env file
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-changeme123}@db:5432/support_bot
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME:-support-chatbot}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000}
+    depends_on:
+      - db
+    restart: unless-stopped
+    # Note: Remove volumes mount in production (line below is for development only)
+    # volumes:
+    #   - ..:/app
+
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme123}  # CHANGE THIS IN PRODUCTION
+      - POSTGRES_DB=support_bot
+    restart: unless-stopped
+    # Only expose port if you need external DB access (not recommended for production)
+    # ports:
+    #   - "5432:5432"
+
+volumes:
+  postgres_data:

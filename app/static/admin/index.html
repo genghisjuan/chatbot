@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JUNA Analytics</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/admin/admin.css">
+</head>
+
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <div class="logo"><i class="fas fa-chart-line"></i> JUNA Analytics</div>
+            <div class="nav-item active" data-view="overview" tabindex="0" role="button"><i class="fas fa-home"></i>
+                Overview</div>
+            <div class="nav-item" data-view="trends" tabindex="0" role="button"><i class="fas fa-chart-area"></i> Trends
+            </div>
+            <div class="nav-item" data-view="spend" tabindex="0" role="button"><i class="fas fa-dollar-sign"></i> Spend
+            </div>
+            <div class="sidebar-footer"><a href="/"><i class="fas fa-arrow-left"></i> Back to Chatbot</a></div>
+        </aside>
+
+        <main class="main">
+            <header class="header">
+                <h1 id="viewTitle">Overview</h1>
+                <span class="date" id="currentDate"></span>
+            </header>
+
+            <div class="content">
+                <!-- Overview -->
+                <div class="view active" id="overview">
+                    <!-- Compact Stats Grid -->
+                    <!-- Compact Stats Grid -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon blue"><i class="fas fa-comment-alt"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="statDaily">--</div>
+                                <div class="stat-label">Chats Today</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon purple"><i class="fas fa-comments"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="statWeekly">--</div>
+                                <div class="stat-label">Chats This Week</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon indigo"><i class="fas fa-history"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="statMonthly">--</div>
+                                <div class="stat-label">Chats This Month</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon green"><i class="fas fa-thumbs-up"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="statPositive">--%</div>
+                                <div class="stat-label">Positive Feedback</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon red"><i class="fas fa-thumbs-down"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="statNegative">--%</div>
+                                <div class="stat-label">Negative Feedback</div>
+                            </div>
+                        </div>
+                    </div>
+
+
+
+                    <div class="detail-section">
+                        <div class="detail-header">
+                            <div class="tab positive active" data-tab="positive" tabindex="0" role="button"><i
+                                    class="fas fa-thumbs-up"></i>
+                                Positive</div>
+                            <div class="tab negative" data-tab="negative" tabindex="0" role="button"><i
+                                    class="fas fa-thumbs-down"></i> Negative
+                            </div>
+                            <div class="filter-controls">
+                                <select id="periodFilter" class="period-select">
+                                    <option value="">All Time</option>
+                                    <option value="day">Today</option>
+                                    <option value="week">This Week</option>
+                                    <option value="month">This Month</option>
+                                    <option value="custom">Custom Range</option>
+                                </select>
+                                <div id="customDateRange" class="date-range" style="display:none;">
+                                    <input type="date" id="startDate" class="date-input">
+                                    <span class="date-separator">to</span>
+                                    <input type="date" id="endDate" class="date-input">
+                                    <button id="applyDateBtn" class="apply-btn">Apply</button>
+                                </div>
+                                <button id="exportBtn" class="export-btn"><i class="fas fa-download"></i>
+                                    Export</button>
+                            </div>
+                        </div>
+                        <div class="detail-content">
+                            <div class="tab-content active" id="positiveContent"></div>
+                            <div class="tab-content" id="negativeContent"></div>
+                            <div style="text-align: center; margin-top: 15px;">
+                                <button id="loadMoreBtn" class="trend-btn" style="width: 200px;">Load More</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trends -->
+                <div class="view" id="trends">
+                    <!-- Kept Existing Trends View -->
+                    <div class="detail-section">
+                        <div class="detail-header" style="padding: 14px 18px; display: block;">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <div class="trend-controls"
+                                    style="margin-bottom: 0; display: flex; align-items: center; width: 100%; justify-content: flex-end;">
+                                    <button class="trend-btn active" onclick="updateTrend(1, this)">Today</button>
+                                    <button class="trend-btn" onclick="updateTrend(7, this)">Last Week</button>
+                                    <button class="trend-btn" onclick="updateTrend(30, this)">Last Month</button>
+                                    <button class="trend-btn" onclick="updateTrend(365, this)">Last Year</button>
+                                    <button class="trend-btn" onclick="updateTrend('custom', this)">Custom
+                                        Range</button>
+
+                                    <div id="trendCustomDateRange"
+                                        style="display: none; margin-left: 12px; align-items: center; gap: 8px;">
+                                        <input type="date" id="trendStartDate" class="date-input">
+                                        <span style="color: #6b7280; font-size: 0.9em;">to</span>
+                                        <input type="date" id="trendEndDate" class="date-input">
+                                        <button onclick="applyTrendCustomDate()" class="apply-btn">Apply</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-content">
+                            <!-- Messages Chart -->
+                            <h3 style="color: #cbd5e0; margin-bottom: 15px; margin-left: 5px;">
+                                Queries Over Time <span id="trendTotalMsg"
+                                    style="color: #667eea; font-size: 0.9em; margin-left: 8px;"></span>
+                            </h3>
+                            <div class="chart-container">
+                                <canvas id="trendChart"></canvas>
+                                <div id="noTrendData" class="empty-overlay">No data available for this range</div>
+                                <div id="trendError" class="empty-overlay error-overlay"
+                                    style="display:none; color: #ef4444;">Failed to load data</div>
+                            </div>
+
+                            <!-- Satisfaction Chart -->
+                            <h3 style="color: #cbd5e0; margin-top: 30px; margin-bottom: 15px; margin-left: 5px;">
+                                Satisfaction Rate <span id="trendTotalSat"
+                                    style="color: #48bb78; font-size: 0.9em; margin-left: 8px;"></span>
+                            </h3>
+                            <div class="chart-container">
+                                <canvas id="feedbackChart"></canvas>
+                                <div id="feedbackError" class="empty-overlay error-overlay"
+                                    style="display:none; color: #ef4444;">Failed to load data</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Spend View -->
+                <div class="view" id="spend">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="font-size: 1.5em; font-weight: bold; color: #fff; margin: 0;">Financial Overview</h2>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-card"
+                            title="Total cost including Chat generation, Embeddings, and Manual expenses for Today.">
+                            <div class="stat-icon blue"><i class="fas fa-dollar-sign"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="spendToday">$0.00</div>
+                                <div class="stat-label">Today</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon purple"><i class="fas fa-calendar-week"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="spendWeek">$0.00</div>
+                                <div class="stat-label">This Week</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon indigo"><i class="fas fa-calendar-alt"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="spendMonth">$0.00</div>
+                                <div class="stat-label">This Month</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon green"><i class="fas fa-coins"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="spendAllTime">$0.00</div>
+                                <div class="stat-label">All Time <i class="fas fa-info-circle"
+                                        style="font-size: 0.8em; opacity: 0.7; margin-left: 4px;"
+                                        title="Includes: Chat Generation (GPT-4o-mini), RAG Embeddings, and Manual Expenses."></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: rgba(236, 201, 75, 0.1); color: #ecc94b;"><i
+                                    class="fas fa-receipt"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="spendAvg">$0.00</div>
+                                <div class="stat-label">Avg per Query</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section" style="margin-top: 20px;">
+                        <div class="section-header">
+                            <h2>Token Breakdown</h2>
+                        </div>
+                        <div class="detail-content" style="padding: 20px;">
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;">
+                                <div style="background: #1a1a28; padding: 20px; border-radius: 8px;">
+                                    <div style="color: #6b7280; font-size: 0.85em;">Total Queries</div>
+                                    <div id="spendQueryCount" style="font-size: 1.5em; color: #fff; margin-top: 8px;">0
+                                    </div>
+                                </div>
+                                <div style="background: #1a1a28; padding: 20px; border-radius: 8px;">
+                                    <div style="color: #6b7280; font-size: 0.85em;">Input Tokens</div>
+                                    <div id="spendInputTokens"
+                                        style="font-size: 1.5em; color: #667eea; margin-top: 8px;">0</div>
+                                </div>
+                                <div style="background: #1a1a28; padding: 20px; border-radius: 8px;">
+                                    <div style="color: #6b7280; font-size: 0.85em;">Output Tokens</div>
+                                    <div id="spendOutputTokens"
+                                        style="font-size: 1.5em; color: #48bb78; margin-top: 8px;">0</div>
+                                </div>
+                                <div style="background: #1a1a28; padding: 20px; border-radius: 8px;">
+                                    <div style="color: #6b7280; font-size: 0.85em;">Embedding Tokens</div>
+                                    <div id="spendEmbeddingTokens"
+                                        style="font-size: 1.5em; color: #ecc94b; margin-top: 8px;">0</div>
+                                </div>
+                            </div>
+                            <div
+                                style="margin-top: 20px; padding: 15px; background: rgba(102, 126, 234, 0.1); border-radius: 8px; color: #a0aec0; font-size: 0.9em;">
+                                <i class="fas fa-info-circle" style="color: #667eea;"></i>
+                                <span style="margin-left: 8px;">Pricing: $<span id="pricingInput">0.15</span>/1M input
+                                    tokens, $<span id="pricingOutput">0.60</span>/1M output tokens (<span
+                                        id="pricingModel">gpt-4o-mini</span>)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+
+    </div>
+
+    <script src="/static/admin/admin.js" defer></script>
+</body>
+
+</html>

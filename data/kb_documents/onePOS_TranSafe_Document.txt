@@ -1,0 +1,11 @@
+TRANSAFE Integration Guide for onePOS
+
+1. Primary Host: live.transafe.com
+2. Backup Host: backup.transafe.com
+3. Port: 443
+
+Troubleshooting:
+If you receive a "Connection Refused" error, check your firewall settings for Port 443.
+For refunds, navigate to the Manager Menu -> Financials -> Credit Cards.
+
+Support Contact: 1-800-555-0199
