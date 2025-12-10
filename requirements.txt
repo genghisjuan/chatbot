@@ -19,5 +19,6 @@ pinecone
 python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
+aiosmtplib
 customtkinter
 pillow
