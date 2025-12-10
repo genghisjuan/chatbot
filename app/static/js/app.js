@@ -353,11 +353,13 @@ class ChatApp {
         }
 
         if (text) {
+            const textNode = document.createElement('div');
             if (isMarkdown) {
-                textContentDiv.innerHTML = marked.parse(text);
+                textNode.innerHTML = marked.parse(text);
             } else {
-                textContentDiv.textContent = text;
+                textNode.textContent = text;
             }
+            textContentDiv.appendChild(textNode);
         }
 
         wrapper.appendChild(messageDiv);
