@@ -7,9 +7,21 @@ from app.services.analytics import AnalyticsService
 from app.services import logger
 from app.services.email_service import EmailService
 import json
-import imghdr
 
 router = APIRouter()
+
+# Image validation helper (replaces deprecated imghdr)
+def validate_image_bytes(image_data: bytes) -> str:
+    """Check image format from magic bytes. Returns format or None."""
+    if image_data.startswith(b'\xff\xd8\xff'):
+        return 'jpeg'
+    elif image_data.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    elif image_data.startswith(b'GIF87a') or image_data.startswith(b'GIF89a'):
+        return 'gif'
+    elif image_data.startswith(b'RIFF') and image_data[8:12] == b'WEBP':
+        return 'webp'
+    return None
 
 # Dependency injection for services (singleton pattern)
 _analytics_service = None
@@ -68,7 +80,7 @@ async def chat_endpoint(
                 raise HTTPException(status_code=413, detail="File too large (max 10MB)")
             
             # Verify actual image content (magic bytes)
-            actual_type = imghdr.what(None, h=image_bytes)
+            actual_type = validate_image_bytes(image_bytes)
             if actual_type not in ['jpeg', 'png', 'gif', 'webp']:
                 raise HTTPException(status_code=400, detail="Invalid or corrupted image file")
 
