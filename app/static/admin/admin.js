@@ -488,4 +488,4 @@ document.querySelectorAll('.tab').forEach(tab => {
 // Init
 loadStats();
 loadFeedback();
-loadTrend();
+loadTrend(1); // Default to "Today" view
