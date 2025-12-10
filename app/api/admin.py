@@ -139,9 +139,11 @@ async def get_messages_trend(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
     else:
-        # Last N Days (UTC)
+        # Last N Days (UTC) - inclusive of current day
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Always use current UTC date as end, not yesterday
         end_dt = now_utc.date()
+        # For "Last N days", include today as day 1
         start_dt = end_dt - timedelta(days=days-1)
 
     # Generate Data
@@ -169,22 +171,25 @@ async def get_messages_trend(
         return {"trend": results}
 
     if granularity == "hour":
-        # Hourly Buckets (00:00 to 23:59)
+        # Hourly Buckets (00:00 to 23:59) - PostgreSQL compatible
         current = datetime.combine(start_dt, datetime.min.time())
         end_full = datetime.combine(end_dt, datetime.max.time())
         
         while current <= end_full:
-            hour_str = current.strftime('%Y-%m-%d %H')
-            # Count (UTC timestamps)
+            # Get next hour boundary
+            next_hour = current + timedelta(hours=1)
+            
+            # Count messages in this hour using timestamp range (works on both SQLite and PostgreSQL)
             count = db.query(func.count(QueryLog.id)).filter(
-                func.strftime('%Y-%m-%d %H', QueryLog.timestamp) == hour_str
+                QueryLog.timestamp >= current,
+                QueryLog.timestamp < next_hour
             ).scalar() or 0
             
             results.append({
-                "date": current.strftime('%Y-%m-%dT%H:%M:%S'),  # Include actual hour
+                "date": current.strftime('%Y-%m-%dT%H:%M:%S'),
                 "count": count
             })
-            current += timedelta(hours=1)
+            current = next_hour
     
     elif granularity == "month":
         # Monthly Buckets
@@ -343,15 +348,18 @@ async def get_feedback_trend(
         end_full = datetime.combine(end_dt, datetime.max.time())
         
         while current <= end_full:
-            hour_str = current.strftime('%Y-%m-%d %H')
-            # Count Up/Down (UTC timestamps)
+            next_hour = current + timedelta(hours=1)
+            
+            # Count up/down using timestamp range (PostgreSQL compatible)
             up_count = db.query(func.count(FeedbackLog.id)).filter(
-                func.strftime('%Y-%m-%d %H', FeedbackLog.timestamp) == hour_str,
+                FeedbackLog.timestamp >= current,
+                FeedbackLog.timestamp < next_hour,
                 FeedbackLog.rating == 'up'
             ).scalar() or 0
             
             down_count = db.query(func.count(FeedbackLog.id)).filter(
-                func.strftime('%Y-%m-%d %H', FeedbackLog.timestamp) == hour_str,
+                FeedbackLog.timestamp >= current,
+                FeedbackLog.timestamp < next_hour,
                 FeedbackLog.rating == 'down'
             ).scalar() or 0
             
