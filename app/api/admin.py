@@ -181,7 +181,7 @@ async def get_messages_trend(
             ).scalar() or 0
             
             results.append({
-                "date": current.isoformat(),
+                "date": current.strftime('%Y-%m-%dT%H:%M:%S'),  # Include actual hour
                 "count": count
             })
             current += timedelta(hours=1)
