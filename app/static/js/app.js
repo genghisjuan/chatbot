@@ -30,6 +30,7 @@ class ChatApp {
     init() {
         this.setupEventListeners();
         this.setupSpeechRecognition();
+        this.loadTTSVoices(); // Load text-to-speech voices
         this.fetchTrendingTopics();
         this.startTrendingPoller();
         this.setupNetworkMonitoring();
@@ -743,8 +744,58 @@ class ChatApp {
 
     speak(text) {
         if (this.isMuted || !window.speechSynthesis) return;
+
         const utterance = new SpeechSynthesisUtterance(text);
+
+        // Get selected language
+        const selectedLang = this.languageSelect?.value || 'en-US';
+
+        // Get available voices
+        const voices = window.speechSynthesis.getVoices();
+
+        // Find the best voice for the selected language
+        // Try to find a voice that matches the exact locale (e.g., es-ES)
+        let voice = voices.find(v => v.lang === selectedLang);
+
+        // If no exact match, try to find a voice matching the language code (e.g., es)
+        if (!voice) {
+            const langCode = selectedLang.split('-')[0];
+            voice = voices.find(v => v.lang.startsWith(langCode));
+        }
+
+        // If still no match, try to find a voice with similar language in the name
+        if (!voice) {
+            const langCode = selectedLang.split('-')[0];
+            voice = voices.find(v => v.name.toLowerCase().includes(langCode));
+        }
+
+        // Set the voice and language
+        if (voice) {
+            utterance.voice = voice;
+        }
+        utterance.lang = selectedLang;
+
+        // Adjust speech parameters for better quality
+        utterance.rate = 0.9; // Slightly slower for clarity
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+
         window.speechSynthesis.speak(utterance);
+    }
+
+    loadTTSVoices() {
+        // Load voices - they may not be immediately available
+        if (window.speechSynthesis) {
+            // Trigger voice loading
+            window.speechSynthesis.getVoices();
+
+            // Chrome loads voices asynchronously
+            if (window.speechSynthesis.onvoiceschanged !== undefined) {
+                window.speechSynthesis.onvoiceschanged = () => {
+                    window.speechSynthesis.getVoices();
+                };
+            }
+        }
     }
 
     toggleMute() {
