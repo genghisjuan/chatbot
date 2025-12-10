@@ -344,6 +344,16 @@ class ChatApp {
         const wrapper = document.createElement('div');
         wrapper.className = `message-wrapper ${sender}`;
 
+        // Store message context for feedback
+        if (sender === 'bot') {
+            wrapper.dataset.botResponse = text;
+            // Get last user message from conversation history
+            const lastUserMsg = this.conversationHistory.filter(m => m.role === 'user').pop();
+            if (lastUserMsg) {
+                wrapper.dataset.userQuery = lastUserMsg.content;
+            }
+        }
+
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${sender === 'user' ? 'user-message' : 'bot-message'}`;
 
@@ -387,12 +397,12 @@ class ChatApp {
             const upBtn = document.createElement('button');
             upBtn.className = 'feedback-btn';
             upBtn.innerHTML = '<i class="fas fa-thumbs-up"></i>';
-            upBtn.onclick = () => this.sendFeedback(msgId, 'up', upBtn, downBtn);
+            upBtn.onclick = () => this.sendFeedback(msgId, 'up', upBtn, downBtn, wrapper);
 
             const downBtn = document.createElement('button');
             downBtn.className = 'feedback-btn';
             downBtn.innerHTML = '<i class="fas fa-thumbs-down"></i>';
-            downBtn.onclick = () => this.sendFeedback(msgId, 'down', downBtn, upBtn);
+            downBtn.onclick = () => this.sendFeedback(msgId, 'down', downBtn, upBtn, wrapper);
 
             feedbackDiv.appendChild(upBtn);
             feedbackDiv.appendChild(downBtn);
@@ -474,15 +484,22 @@ class ChatApp {
         });
     }
 
-    async sendFeedback(msgId, rating, btn, otherBtn) {
+    async sendFeedback(msgId, rating, btn, otherBtn, wrapper) {
         btn.classList.add(rating === 'up' ? 'active-up' : 'active-down');
         otherBtn.classList.remove('active-up', 'active-down');
 
         try {
+            const payload = {
+                message_id: msgId,
+                rating: rating,
+                user_query: wrapper.dataset.userQuery || '',
+                bot_response: wrapper.dataset.botResponse || ''
+            };
+
             await fetch('/api/v1/feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message_id: msgId, rating: rating })
+                body: JSON.stringify(payload)
             });
         } catch (e) { console.error('Feedback failed', e); }
     }
