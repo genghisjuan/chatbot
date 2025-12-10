@@ -125,17 +125,23 @@ async def get_messages_trend(
     start_date: Optional[str] = None, 
     end_date: Optional[str] = None,
     granularity: str = Query(default="day", pattern="^(15min|minute|hour|day|month)$"),
+    timezone_offset: int = Query(default=0, description="User's timezone offset from UTC in minutes (e.g., -300 for EST)"),
     db = Depends(get_db)
 ):
     """Get daily or hourly message counts for trend chart."""
     results = []
     
-    # Calculate Date Range
+    # Custom Date Range (Priority)
     if start_date and end_date:
         try:
-            # Custom Range
-            start_dt = datetime.fromisoformat(start_date).date()
-            end_dt = datetime.fromisoformat(end_date).date()
+            # Parse as naive dates, then adjust for user's timezone
+            start_dt_naive = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt_naive = datetime.strptime(end_date, '%Y-%m-%d')
+            
+            # Apply timezone offset: user's midnight in their TZ = offset minutes later in UTC
+            offset_delta = timedelta(minutes=-timezone_offset)
+            start_dt = start_dt_naive - offset_delta
+            end_dt = end_dt_naive - offset_delta
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
     else:
@@ -293,17 +299,23 @@ async def get_feedback_trend(
     start_date: Optional[str] = None, 
     end_date: Optional[str] = None,
     granularity: str = Query(default="day", pattern="^(15min|minute|hour|day|month)$"),
+    timezone_offset: int = Query(default=0, description="User's timezone offset from UTC in minutes (e.g., -300 for EST)"),
     db = Depends(get_db)
 ):
     """Get daily or hourly feedback stats (up/down)."""
     results = []
     
-    # Determine Date Range (Same logic as messages-trend)
+    # Custom Date Range (Priority)
     if start_date and end_date:
         try:
-            # Custom Range
-            start_dt = datetime.fromisoformat(start_date).date()
-            end_dt = datetime.fromisoformat(end_date).date()
+            # Parse as naive dates, then adjust for user's timezone
+            start_dt_naive = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt_naive = datetime.strptime(end_date, '%Y-%m-%d')
+            
+            # Apply timezone offset: user's midnight in their TZ = offset minutes later in UTC
+            offset_delta = timedelta(minutes=-timezone_offset)
+            start_dt = start_dt_naive - offset_delta
+            end_dt = end_dt_naive - offset_delta
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
     else:
