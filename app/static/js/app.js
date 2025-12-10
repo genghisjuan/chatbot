@@ -36,6 +36,13 @@ class ChatApp {
         this.setupNetworkMonitoring();
         this.renderConversations(); // Load sidebar history
 
+        // Stop speech on page unload/refresh
+        window.addEventListener('beforeunload', () => {
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
+        });
+
         // Restore UI
         if (this.conversationHistory.length > 0) {
             this.messagesDiv.innerHTML = '';
@@ -186,6 +193,10 @@ class ChatApp {
     }
 
     startNewChat() {
+        // Stop any ongoing speech before clearing conversation
+        if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
         this.clearConversation();
         location.reload();
     }
@@ -536,6 +547,10 @@ class ChatApp {
         }
 
         if (conv.history && Array.isArray(conv.history) && conv.history.length > 0) {
+            // Stop any ongoing speech before switching conversation
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
             sessionStorage.setItem('current_conversation_history', JSON.stringify(conv.history));
             sessionStorage.setItem('current_conversation_id', conv.id);
             location.reload();
