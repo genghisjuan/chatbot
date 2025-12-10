@@ -274,9 +274,12 @@ async function loadTrend(days = 7, startDate = null, endDate = null) {
 
         const labels = dataMsg.trend.map(t => {
             const d = parseTrendDate(t.date);
+            // For hour/15min granularity, show local time (user expects to see their timezone)
             if (granularity === 'hour' || granularity === '15min') return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-            if (granularity === 'month') return d.toLocaleDateString([], { month: 'short', year: 'numeric' });
-            return d.toLocaleDateString();
+            // For day/month granularity, use UTC date to avoid timezone offset issues
+            if (granularity === 'month') return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+            // Display date in UTC to match backend data
+            return d.toLocaleDateString('en-US', { timeZone: 'UTC' });
         });
 
         // Calculate Totals (Today Only)
