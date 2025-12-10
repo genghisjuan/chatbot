@@ -246,7 +246,16 @@ async function loadTrend(days = 7, startDate = null, endDate = null) {
             granularity = 'hour';
         }
 
-        const daysParam = (days === 'custom') ? 0 : days;
+        // For "Today" (days=1), send user's local date range to show their full local day
+        if (days === 1 && !startDate && !endDate) {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            startDate = endDate = `${year}-${month}-${day}`;
+        }
+
+        const daysParam = (days === 'custom' || days === 1) ? 0 : days;
 
         // URLs
         let msgUrl = `/api/v1/admin/messages-trend?days=${daysParam}&granularity=${granularity}`;
