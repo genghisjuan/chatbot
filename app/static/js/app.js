@@ -339,13 +339,16 @@ class ChatApp {
         textContentDiv.className = 'message-content';
         messageDiv.appendChild(textContentDiv);
 
+        // Display uploaded image in chat message
         if (imageFile) {
             const img = document.createElement('img');
             img.src = URL.createObjectURL(imageFile);
-            img.style.maxWidth = '200px';
-            img.style.borderRadius = '8px';
-            img.style.marginBottom = '10px';
+            img.style.maxWidth = '300px';
+            img.style.maxHeight = '300px';
+            img.style.borderRadius = '12px';
+            img.style.marginBottom = '12px';
             img.style.display = 'block';
+            img.style.objectFit = 'cover';
             textContentDiv.appendChild(img);
         }
 
