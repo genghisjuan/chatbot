@@ -246,13 +246,22 @@ async function loadTrend(days = 7, startDate = null, endDate = null) {
             granularity = 'hour';
         }
 
-        // For "Today" (days=1), send user's local date range to show their full local day
+        // For "Today" (days=1), calculate UTC dates that represent user's full local day
+        // Example: Dec 10 EST = Dec 10 00:00 EST to Dec 10 23:59 EST
+        //                     = Dec 10 05:00 UTC to Dec 11 04:59 UTC
         if (days === 1 && !startDate && !endDate) {
             const today = new Date();
-            const year = today.getFullYear();
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const day = String(today.getDate()).padStart(2, '0');
-            startDate = endDate = `${year}-${month}-${day}`;
+            // Get start of local day
+            const localDayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+            // Get end of local day
+            const localDayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+
+            // Convert to UTC date strings (YYYY-MM-DD format)
+            const utcStartDate = localDayStart.toISOString().split('T')[0];
+            const utcEndDate = localDayEnd.toISOString().split('T')[0];
+
+            startDate = utcStartDate;
+            endDate = utcEndDate;
         }
 
         const daysParam = (days === 'custom' || days === 1) ? 0 : days;
