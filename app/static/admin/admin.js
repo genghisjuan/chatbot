@@ -156,8 +156,8 @@ function renderFeedbackCards(feedbackList, containerId) {
     }
 
     feedbackList.forEach(item => {
-        // Parse as UTC and convert to local timezone
-        const date = new Date(item.timestamp + 'Z').toLocaleString();
+        // Backend returns ISO format with timezone offset (e.g., 2025-12-10T23:03:02+00:00)
+        const date = new Date(item.timestamp).toLocaleString();
         const card = document.createElement('div');
         card.className = 'feedback-detail-card';
 
