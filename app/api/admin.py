@@ -121,7 +121,7 @@ async def get_summary_stats(db = Depends(get_db)):
 
 @router.get("/messages-trend")
 async def get_messages_trend(
-    days: int = Query(default=7, ge=1, le=365), 
+    days: int = Query(default=7, ge=0, le=365), 
     start_date: Optional[str] = None, 
     end_date: Optional[str] = None,
     granularity: str = Query(default="day", pattern="^(15min|minute|hour|day|month)$"),
@@ -289,7 +289,7 @@ async def get_feedback_list(
 
 @router.get("/feedback-trend")
 async def get_feedback_trend(
-    days: int = Query(default=7, ge=1, le=365), 
+    days: int = Query(default=7, ge=0, le=365), 
     start_date: Optional[str] = None, 
     end_date: Optional[str] = None,
     granularity: str = Query(default="day", pattern="^(15min|minute|hour|day|month)$"),
