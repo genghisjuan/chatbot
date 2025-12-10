@@ -192,23 +192,28 @@ async def get_messages_trend(
             current = next_hour
     
     elif granularity == "month":
-        # Monthly Buckets
+        # Monthly Buckets - PostgreSQL compatible
         current = start_dt.replace(day=1)
         end_curr = end_dt.replace(day=1)
         
         while current <= end_curr:
-            month_str = current.strftime('%Y-%m')
+            # Calculate start and end of this month
+            if current.month == 12:
+                next_month = current.replace(year=current.year + 1, month=1, day=1)
+            else:
+                next_month = current.replace(month=current.month + 1, day=1)
+            
+            # Count using timestamp range (PostgreSQL compatible)
             count = db.query(func.count(QueryLog.id)).filter(
-                func.strftime('%Y-%m', QueryLog.timestamp) == month_str
+                QueryLog.timestamp >= current,
+                QueryLog.timestamp < next_month
             ).scalar() or 0
             
             results.append({
-                "date": month_str,
+                "date": current.strftime('%Y-%m'),
                 "count": count
             })
-            # Next month
-            next_month = current.replace(day=28) + timedelta(days=4)
-            current = next_month.replace(day=1)
+            current = next_month
     else:
         # Daily Buckets
         current = start_dt
@@ -375,25 +380,31 @@ async def get_feedback_trend(
         end_curr = end_dt.replace(day=1)
         
         while current <= end_curr:
-            month_str = current.strftime('%Y-%m')
+            # Calculate next month
+            if current.month == 12:
+                next_month = current.replace(year=current.year + 1, month=1, day=1)
+            else:
+                next_month = current.replace(month=current.month + 1, day=1)
             
+            # Count up/down using timestamp range (PostgreSQL compatible)
             up_count = db.query(func.count(FeedbackLog.id)).filter(
-                func.strftime('%Y-%m', FeedbackLog.timestamp) == month_str,
+                FeedbackLog.timestamp >= current,
+                FeedbackLog.timestamp < next_month,
                 FeedbackLog.rating == 'up'
             ).scalar() or 0
             
             down_count = db.query(func.count(FeedbackLog.id)).filter(
-                func.strftime('%Y-%m', FeedbackLog.timestamp) == month_str,
+                FeedbackLog.timestamp >= current,
+                FeedbackLog.timestamp < next_month,
                 FeedbackLog.rating == 'down'
             ).scalar() or 0
             
             results.append({
-                "date": month_str,
+                "date": current.strftime('%Y-%m'),
                 "up": up_count,
                 "down": down_count
             })
-            next_month = current.replace(day=28) + timedelta(days=4)
-            current = next_month.replace(day=1)
+            current = next_month
     else:
         current = start_dt
         while current <= end_dt:
