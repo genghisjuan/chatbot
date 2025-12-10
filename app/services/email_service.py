@@ -73,13 +73,18 @@ class EmailService:
                 msg["Subject"] = subject
                 msg.set_content(body, charset="utf-8", cte="quoted-printable")
                 
+                # Determine connection method based on port
+                # Port 465 = SSL, Port 587 = STARTTLS
+                use_tls = settings.SMTP_PORT == 465
+                
                 await aiosmtplib.send(
                     msg,
                     hostname=settings.SMTP_SERVER,
                     port=settings.SMTP_PORT,
                     username=settings.SMTP_USERNAME,
                     password=settings.SMTP_PASSWORD,
-                    start_tls=True
+                    use_tls=use_tls,  # Use SSL for port 465
+                    start_tls=(not use_tls)  # Use STARTTLS for port 587
                 )
                 logger.info(f"Successfully sent email to {self.recipient}")
                 return ticket_id
