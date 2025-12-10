@@ -112,10 +112,13 @@ async def process_chat_stream(chat_input: ChatInput, image_bytes: bytes | None =
         client = get_vision_client()
         image_b64 = base64.b64encode(image_bytes).decode('utf-8')
         
+        # Get readable language name for prompt
+        language_name = LANGUAGE_MAP.get(chat_input.language, chat_input.language)
+        
         vision_messages = [
             {
                 "role": "system",
-                "content": """You are a Payroc support assistant. You ONLY help with:
+                "content": f"""You are a Payroc support assistant. You ONLY help with:
 - Payment processing equipment (terminals, card readers, POS systems)
 - Error messages on payment devices
 - Receipt/transaction issues
@@ -124,7 +127,9 @@ async def process_chat_stream(chat_input: ChatInput, image_bytes: bytes | None =
 If the uploaded image is NOT related to payment processing, POS systems, or Payroc products, respond with:
 "I can only help with payment processing and POS-related images. This image doesn't appear to be related to our support services. Please upload a screenshot of an error message, a photo of your payment terminal, or another support-related image."
 
-If the image IS relevant, provide helpful troubleshooting guidance based on what you see."""
+If the image IS relevant, provide helpful troubleshooting guidance based on what you see.
+
+LANGUAGE: Respond entirely in {language_name}. All explanations, troubleshooting steps, and guidance must be in {language_name}."""
             },
             {
                 "role": "user",
