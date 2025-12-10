@@ -6,6 +6,7 @@ from app.api.admin import router as admin_router
 from app.api.chat import router as chat_router
 from app.api.tts import router as tts_router
 from app.core.config import settings
+from app.services.analytics import AnalyticsService
 import time
 from collections import defaultdict
 from typing import Dict, Tuple, Any
@@ -19,6 +20,17 @@ app = FastAPI(
     docs_url="/docs" if is_localhost else None,  # Disable Swagger UI in production
     redoc_url="/redoc" if is_localhost else None  # Disable ReDoc in production
 )
+
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize analytics service and create database tables"""
+    try:
+        # This will trigger AnalyticsService.__init__() which calls _init_db()
+        _ = AnalyticsService()
+    except Exception as e:
+        print(f"Warning: Failed to initialize analytics database: {e}")
+
 
 # CORS Middleware - Must be added before other middleware
 app.add_middleware(
