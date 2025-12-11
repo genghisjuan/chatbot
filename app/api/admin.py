@@ -19,7 +19,104 @@ from pydantic import BaseModel, Field
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# ... (database connection code remains same) ...
+# Database connection
+engine = create_engine(settings.DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@router.get("/summary")
+async def get_summary_stats(db = Depends(get_db)):
+    """Get overview statistics for dashboard cards."""
+    # Use date-only comparison for "today" to avoid timezone issues
+    # QueryLog.timestamp is stored in UTC
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # Naive UTC for SQLite
+    today = now.date()
+    
+    # Today: Compare the date portion of timestamp in UTC
+    messages_today = db.query(func.count(QueryLog.id)).filter(
+        func.date(QueryLog.timestamp) == today.isoformat()
+    ).scalar() or 0
+    
+    # This Week: Monday to Sunday (UTC)
+    days_since_monday = now.weekday()  # Monday=0, Sunday=6
+    week_start = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end = week_start + timedelta(days=7)
+    
+    # This Month: 1st to now (UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # Use simple string format 'YYYY-MM-DD HH:MM:SS' for SQLite comparison
+    fmt = "%Y-%m-%d %H:%M:%S"
+    
+    # Weekly conversations
+    messages_week = db.query(func.count(QueryLog.id)).filter(
+        QueryLog.timestamp >= week_start.strftime(fmt),
+        QueryLog.timestamp < week_end.strftime(fmt)
+    ).scalar() or 0
+    
+    # Monthly conversations
+    messages_month = db.query(func.count(QueryLog.id)).filter(
+        QueryLog.timestamp >= month_start.strftime(fmt)
+    ).scalar() or 0
+    
+    # Escalation stats (EscalationLog already imported at top)
+    
+    # Total Conversations (Sessions)
+    total_sessions = db.query(func.count(QueryLog.id)).filter(
+        QueryLog.is_initial == 1
+    ).scalar() or 0
+    
+    # Fallback queries
+    total_queries = db.query(func.count(QueryLog.id)).scalar() or 0
+    fallback_queries = db.query(func.count(QueryLog.id)).filter(
+        QueryLog.is_fallback == 1
+    ).scalar() or 0
+    
+    fallback_rate = (fallback_queries / total_queries * 100) if total_queries > 0 else 0
+    
+    # Escalations
+    total_escalations = db.query(func.count(EscalationLog.id)).scalar() or 0
+    
+    # Containment Rate
+    # Ensure we don't divide by zero or have negative containment
+    if total_sessions > 0:
+        containment_rate = max(0, (total_sessions - total_escalations) / total_sessions * 100)
+    else:
+        if total_escalations > 0:
+            logger.warning(f"Escalations exist ({total_escalations}) without sessions - data integrity issue")
+        containment_rate = 100 if total_escalations == 0 else 0
+ 
+    # Feedback stats
+    total_feedback = db.query(func.count(FeedbackLog.id)).scalar() or 0
+    positive_feedback = db.query(func.count(FeedbackLog.id)).filter(
+        FeedbackLog.rating == 'up'
+    ).scalar() or 0
+    negative_feedback = total_feedback - positive_feedback
+    
+    positive_rate = (positive_feedback / total_feedback * 100) if total_feedback > 0 else 0
+    negative_rate = (negative_feedback / total_feedback * 100) if total_feedback > 0 else 0
+    
+    return {
+        "messages_today": messages_today,
+        "messages_week": messages_week,
+        "messages_month": messages_month,
+        "positive_feedback_score": round(positive_rate, 1),
+        "negative_feedback_score": round(negative_rate, 1),
+        "total_feedback": total_feedback,
+        "positive_count": positive_feedback,
+        "negative_count": negative_feedback,
+        "containment_rate": round(containment_rate, 1),
+        "fallback_rate": round(fallback_rate, 1),
+        "total_escalations": total_escalations
+    }
 
 @router.get("/messages-trend")
 async def get_messages_trend(
