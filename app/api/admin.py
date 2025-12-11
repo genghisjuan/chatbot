@@ -24,12 +24,37 @@ engine = create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+
+
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+def _calculate_period_start(period: str) -> Optional[datetime]:
+    """Calculate start datetime for common periods (day/week/month).
+    
+    Returns None if period is invalid or None.
+    """
+    if not period:
+        return None
+    
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    
+    if period == 'day':
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == 'week':
+        days_since_monday = now.weekday()
+        return (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == 'month':
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    logger.warning(f"Unknown period requested: {period}")
+    return None
+
 
 
 @router.get("/summary")
@@ -53,18 +78,15 @@ async def get_summary_stats(db = Depends(get_db)):
     # This Month: 1st to now (UTC)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     
-    # Use simple string format 'YYYY-MM-DD HH:MM:SS' for SQLite comparison
-    fmt = "%Y-%m-%d %H:%M:%S"
-    
-    # Weekly conversations
+    # Weekly conversations - use datetime objects directly (SQLAlchemy handles safely)
     messages_week = db.query(func.count(QueryLog.id)).filter(
-        QueryLog.timestamp >= week_start.strftime(fmt),
-        QueryLog.timestamp < week_end.strftime(fmt)
+        QueryLog.timestamp >= week_start,
+        QueryLog.timestamp < week_end
     ).scalar() or 0
     
     # Monthly conversations
     messages_month = db.query(func.count(QueryLog.id)).filter(
-        QueryLog.timestamp >= month_start.strftime(fmt)
+        QueryLog.timestamp >= month_start
     ).scalar() or 0
     
     # Escalation stats (EscalationLog already imported at top)
@@ -125,7 +147,7 @@ async def get_messages_trend(
     start_date: Optional[str] = None, 
     end_date: Optional[str] = None,
     granularity: str = Query(default="day", pattern="^(15min|minute|hour|day|month)$"),
-    timezone_offset: int = Query(default=0, description="User's timezone offset from UTC in minutes (e.g., -300 for EST)"),
+    timezone_offset: int = Query(default=0, ge=-720, le=840, description="User's timezone offset from UTC in minutes (e.g., -300 for EST)"),
     db = Depends(get_db)
 ):
     """Get daily or hourly message counts for trend chart."""
@@ -137,6 +159,21 @@ async def get_messages_trend(
             # Parse as dates in user's local timezone
             start_date_local = datetime.strptime(start_date, '%Y-%m-%d').date()
             end_date_local = datetime.strptime(end_date, '%Y-%m-%d').date()
+            
+            # Validate date range
+            if start_date_local > end_date_local:
+                raise HTTPException(
+                    status_code=400,
+                    detail="start_date must be before or equal to end_date"
+                )
+            
+            # Prevent unreasonably large ranges (max 1 year for performance)
+            max_days = 365
+            if (end_date_local - start_date_local).days > max_days:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Date range too large. Maximum {max_days} days allowed."
+                )
             
             # Frontend sends timezone_offset as NEGATIVE for timezones behind UTC
             # (e.g., EST = -300 meaning UTC-5)
@@ -165,13 +202,13 @@ async def get_messages_trend(
 
     # Generate Data
     if granularity == "15min":
-        # Ensure start_dt and end_dt are datetime objects for filtering
-        if isinstance(start_dt, date):
+        # Normalize both to datetime to prevent type mixing crashes
+        if not isinstance(start_dt, datetime):
             start_dt = datetime.combine(start_dt, datetime.min.time())
-        if isinstance(end_dt, date):
-            end_full = datetime.combine(end_dt, datetime.max.time())
-        else: # end_dt is already a datetime from custom range
-            end_full = end_dt + timedelta(hours=23, minutes=59, seconds=59, microseconds=999999)
+        if not isinstance(end_dt, datetime):
+            end_dt = datetime.combine(end_dt, datetime.min.time())
+        
+        end_full = end_dt + timedelta(hours=23, minutes=59, seconds=59, microseconds=999999)
 
         # Use printf for safe concatenation in SQLite; Force integer division
         bucket = func.printf('%s%02d', func.strftime('%Y-%m-%d %H:', QueryLog.timestamp), func.cast(func.cast(func.strftime('%M', QueryLog.timestamp), Integer) / 15, Integer) * 15)
@@ -292,17 +329,7 @@ async def get_feedback_list(
             raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
     # Preset period filter
     elif period:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        if period == 'day':
-            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        elif period == 'week':
-            days_since_monday = now.weekday()
-            start = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
-        elif period == 'month':
-            start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        else:
-            start = None
-        
+        start = _calculate_period_start(period)
         if start:
             query = query.filter(FeedbackLog.timestamp >= start)
     
@@ -328,7 +355,7 @@ async def get_feedback_trend(
     start_date: Optional[str] = None, 
     end_date: Optional[str] = None,
     granularity: str = Query(default="day", pattern="^(15min|minute|hour|day|month)$"),
-    timezone_offset: int = Query(default=0, description="User's timezone offset from UTC in minutes (e.g., -300 for EST)"),
+    timezone_offset: int = Query(default=0, ge=-720, le=840, description="User's timezone offset from UTC in minutes (e.g., -300 for EST)"),
     db = Depends(get_db)
 ):
     """Get daily or hourly feedback stats (up/down)."""
@@ -497,21 +524,20 @@ async def export_feedback_csv(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
     elif period:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        if period == 'day':
-            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        elif period == 'week':
-            days_since_monday = now.weekday()
-            start = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
-        elif period == 'month':
-            start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        else:
-            start = None
-        
+        start = _calculate_period_start(period)
         if start:
             query = query.filter(FeedbackLog.timestamp >= start)
     
-    results = query.all()
+    # Limit export to prevent memory exhaustion (DoS protection)
+    MAX_EXPORT_ROWS = 10000
+    results = query.limit(MAX_EXPORT_ROWS).all()
+    
+    # Audit log for compliance (GDPR/SOC2)
+    logger.info(
+        f"Feedback export: rating={rating or 'all'}, period={period or 'all'}, "
+        f"start={start_date or 'N/A'}, end={end_date or 'N/A'}, "
+        f"rows_exported={len(results)}, limit={MAX_EXPORT_ROWS}"
+    )
     
     # Create CSV
     output = io.StringIO()
@@ -688,10 +714,11 @@ class ExpenseCreate(BaseModel):
     date: Optional[str] = Field(None, pattern=r'^\d{4}-\d{2}-\d{2}$')  # YYYY-MM-DD format
 
 @router.post("/expenses")
-async def add_expense(expense: ExpenseCreate):
+async def add_expense(expense: ExpenseCreate, db = Depends(get_db)):
     """Add a manual expense."""
     from app.services.analytics import AnalyticsService
-    service = AnalyticsService()
+    # Pass database session to service to participate in request transaction
+    service = AnalyticsService(db=db)
     
     timestamp = None
     if expense.date:
