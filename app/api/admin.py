@@ -116,69 +116,74 @@ def get_summary(
     end_date: str = None,
     db: Session = Depends(get_db)
 ):
-    start_utc, end_utc, _ = _parse_range(range, start_date, end_date)
-    
-    # 1. Counts
-    # Conversations = count of is_initial=True
-    conversations = db.query(QueryLog).filter(
-        QueryLog.timestamp >= start_utc,
-        QueryLog.timestamp <= end_utc,
-        QueryLog.is_initial == 1
-    ).count()
+    try:
+        start_utc, end_utc, _ = _parse_range(range, start_date, end_date)
+        
+        # 1. Counts
+        # Conversations = count of is_initial=True
+        conversations = db.query(QueryLog).filter(
+            QueryLog.timestamp >= start_utc,
+            QueryLog.timestamp <= end_utc,
+            QueryLog.is_initial == 1
+        ).count()
 
-    queries = db.query(QueryLog).filter(
-        QueryLog.timestamp >= start_utc,
-        QueryLog.timestamp <= end_utc
-    ).count()
+        queries = db.query(QueryLog).filter(
+            QueryLog.timestamp >= start_utc,
+            QueryLog.timestamp <= end_utc
+        ).count()
 
-    # 2. Feedback
-    # Positive (1), Negative (-1). Exclude 0.
-    pos_count = db.query(FeedbackLog).filter(
-        FeedbackLog.timestamp >= start_utc,
-        FeedbackLog.timestamp <= end_utc,
-        FeedbackLog.rating == 1
-    ).count()
+        # 2. Feedback
+        # Positive (1), Negative (-1). Exclude 0.
+        pos_count = db.query(FeedbackLog).filter(
+            FeedbackLog.timestamp >= start_utc,
+            FeedbackLog.timestamp <= end_utc,
+            FeedbackLog.rating == 1
+        ).count()
 
-    neg_count = db.query(FeedbackLog).filter(
-        FeedbackLog.timestamp >= start_utc,
-        FeedbackLog.timestamp <= end_utc,
-        FeedbackLog.rating == -1
-    ).count()
+        neg_count = db.query(FeedbackLog).filter(
+            FeedbackLog.timestamp >= start_utc,
+            FeedbackLog.timestamp <= end_utc,
+            FeedbackLog.rating == -1
+        ).count()
 
-    # Rates
-    total_rated = pos_count + neg_count
-    pos_rate = (pos_count / total_rated * 100) if total_rated > 0 else 0
-    neg_rate = (neg_count / total_rated * 100) if total_rated > 0 else 0
+        # Rates
+        total_rated = pos_count + neg_count
+        pos_rate = (pos_count / total_rated * 100) if total_rated > 0 else 0
+        neg_rate = (neg_count / total_rated * 100) if total_rated > 0 else 0
 
-    # 3. Escalations
-    phone_esc = db.query(EscalationLog).filter(
-        EscalationLog.timestamp >= start_utc,
-        EscalationLog.timestamp <= end_utc,
-        EscalationLog.type == 'phone'
-    ).count()
+        # 3. Escalations
+        phone_esc = db.query(EscalationLog).filter(
+            EscalationLog.timestamp >= start_utc,
+            EscalationLog.timestamp <= end_utc,
+            EscalationLog.type == 'phone'
+        ).count()
 
-    email_esc = db.query(EscalationLog).filter(
-        EscalationLog.timestamp >= start_utc,
-        EscalationLog.timestamp <= end_utc,
-        EscalationLog.type == 'email'
-    ).count()
+        email_esc = db.query(EscalationLog).filter(
+            EscalationLog.timestamp >= start_utc,
+            EscalationLog.timestamp <= end_utc,
+            EscalationLog.type == 'email'
+        ).count()
 
-    # 4. Avg Queries per Conversation
-    avg_qpc = (queries / conversations) if conversations > 0 else 0
+        # 4. Avg Queries per Conversation
+        avg_qpc = (queries / conversations) if conversations > 0 else 0
 
-    return {
-        "total_conversations": conversations,
-        "total_queries": queries,
-        "positive_feedback_count": pos_count,
-        "negative_feedback_count": neg_count,
-        "positive_feedback_rate": round(pos_rate, 1),
-        "negative_feedback_rate": round(neg_rate, 1),
-        "phone_escalations": phone_esc,
-        "email_escalations": email_esc,
-        "avg_queries_per_conversation": round(avg_qpc, 1),
-        "period_start": start_utc.isoformat(),
-        "period_end": end_utc.isoformat()
-    }
+        return {
+            "total_conversations": conversations,
+            "total_queries": queries,
+            "positive_feedback_count": pos_count,
+            "negative_feedback_count": neg_count,
+            "positive_feedback_rate": round(pos_rate, 1),
+            "negative_feedback_rate": round(neg_rate, 1),
+            "phone_escalations": phone_esc,
+            "email_escalations": email_esc,
+            "avg_queries_per_conversation": round(avg_qpc, 1),
+            "period_start": start_utc.isoformat(),
+            "period_end": end_utc.isoformat()
+        }
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc()) # Log to server console
+        raise HTTPException(status_code=500, detail=f"Summary Error: {str(e)}")
 
 @router.get("/trends")
 def get_trends(
