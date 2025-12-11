@@ -7,7 +7,7 @@ from app.services.analytics import QueryLog, FeedbackLog, EscalationLog, Expense
 import os
 import csv
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 # Use zoneinfo for timezone handling
 try:
     from zoneinfo import ZoneInfo
