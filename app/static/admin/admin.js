@@ -1,629 +1,412 @@
 /**
- * Admin Analytics Dashboard
- * 
- * Handles data visualization, user interactions, and API communication
- * for the analytics admin interface.
+ * Juna Admin Dashboard Logic
+ * Handles API integration, Charts, and UI State.
  */
 
-// =============================================================================
-// CONSTANTS & STATE
-// =============================================================================
-
+// --- Configuration ---
 const API_BASE = '/api/v1/admin';
-const CHART_COLORS = {
-    primary: '#667eea',
-    success: '#10b981',
-    warning: '#f59e0b',
-    danger: '#ef4444',
-    purple: '#8b5cf6',
-    green: '#48bb78',
-    grid: '#2d3748'
+const REFRESH_INTERVAL = 60000; // 60s
+
+// --- State ---
+const state = {
+    view: 'overview',
+    range: 'today',
+    startDate: null,
+    endDate: null,
+
+    // Feedback
+    fbRating: 1, // 1 (pos) or -1 (neg)
+    fbPage: 1,
+    fbSearch: '',
+
+    // Auto Refresh
+    refreshTimer: null,
+    loading: false
 };
 
-const paginationState = {
-    positive: { currentPage: 1, totalCount: 0, pageSize: 12 },
-    negative: { currentPage: 1, totalCount: 0, pageSize: 12 }
-};
+// --- Initialization ---
 
-// =============================================================================
-// UTILITY FUNCTIONS
-// =============================================================================
+document.addEventListener('DOMContentLoaded', () => {
+    initNavigation();
+    initDateFilters();
+    initFeedbackControls();
 
-/**
- * Helper to fetch JSON data with error handling.
- */
+    // Initial Load
+    fetchData();
+
+    // Auto Refresh
+    startAutoRefresh();
+});
+
+// --- Navigation ---
+
+function initNavigation() {
+    const navItems = document.querySelectorAll('.nav-item');
+    navItems.forEach(item => {
+        item.addEventListener('click', () => {
+            // Update UI
+            navItems.forEach(n => n.classList.remove('active'));
+            item.classList.add('active');
+
+            // Switch View
+            const view = item.dataset.view;
+            document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
+            document.getElementById(`view-${view}`).classList.add('active');
+
+            state.view = view;
+            fetchData();
+        });
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', fetchData);
+    document.getElementById('exportBtn').addEventListener('click', handleExport);
+}
+
+// --- Date Filters ---
+
+function initDateFilters() {
+    const select = document.getElementById('rangeSelect');
+    const customDiv = document.getElementById('customDateInputs');
+
+    select.addEventListener('change', (e) => {
+        state.range = e.target.value;
+        if (state.range === 'custom') {
+            customDiv.style.display = 'flex';
+        } else {
+            customDiv.style.display = 'none';
+            fetchData();
+        }
+    });
+
+    document.getElementById('applyCustomBtn').addEventListener('click', () => {
+        state.startDate = document.getElementById('startDate').value;
+        state.endDate = document.getElementById('endDate').value;
+
+        if (!state.startDate || !state.endDate) {
+            showError("Please select both start and end dates");
+            return;
+        }
+        fetchData();
+    });
+}
+
+function getQueryParams() {
+    const p = new URLSearchParams({ range: state.range });
+    if (state.range === 'custom') {
+        p.append('start_date', state.startDate);
+        p.append('end_date', state.endDate);
+    }
+    return p;
+}
+
+// --- Data Fetching ---
+
+async function fetchData() {
+    if (state.loading) return;
+    setLoading(true);
+    hideError();
+
+    try {
+        const params = getQueryParams();
+
+        // 1. Always load summary for the header badges/KPIs? 
+        // Or per view. Let's load generic data based on view.
+        // Actually, to keep sidebar responsive, usually we fetch per view.
+
+        if (state.view === 'overview') {
+            const summary = await fetchAPI(`/summary?${params}`);
+            renderOverview(summary);
+
+            // Load feedback separately
+            loadFeedback();
+        }
+        else if (state.view === 'trends') {
+            const trends = await fetchAPI(`/trends?${params}`);
+            renderTrends(trends);
+        }
+        else if (state.view === 'spend') {
+            const spend = await fetchAPI(`/spend?${params}`);
+            renderSpend(spend);
+        }
+
+    } catch (err) {
+        showError(err.message);
+    } finally {
+        setLoading(false);
+    }
+}
+
 async function fetchAPI(endpoint) {
-    const res = await fetch(endpoint);
+    const res = await fetch(`${API_BASE}${endpoint}`);
     if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `API Error: ${res.status}`);
     }
     return res.json();
 }
 
-/**
- * Format currency with appropriate precision.
- */
-function formatCurrency(val) {
-    if (!val || val === 0) return '$0.00';
-    if (val < 0.0001) return '$' + val.toFixed(6);
-    if (val < 0.01) return '$' + val.toFixed(4);
-    return '$' + val.toFixed(2);
+// --- Rendering: Overview ---
+
+function renderOverview(data) {
+    setText('kpi-conversations', formatNum(data.total_conversations));
+    setText('kpi-queries', formatNum(data.total_queries));
+    setText('kpi-avg-queries', data.avg_queries_per_conversation);
+
+    setText('kpi-phone-esc', data.phone_escalations);
+    setText('kpi-email-esc', data.email_escalations);
+
+    setText('kpi-pos-count', formatNum(data.positive_feedback_count));
+    setText('kpi-pos-rate', `${data.positive_feedback_rate}%`);
+
+    setText('kpi-neg-count', formatNum(data.negative_feedback_count));
+    setText('kpi-neg-rate', `${data.negative_feedback_rate}%`);
 }
 
-/**
- * Format large numbers with commas.
- */
-function formatNumber(val) {
-    return (val || 0).toLocaleString();
-}
+// --- Rendering: Feedback ---
 
-/**
- * Show/Hide loading state for an element.
- */
-function showLoading(element) {
-    if (element) {
-        element.classList.add('loading');
-        element.setAttribute('aria-busy', 'true');
-    }
-}
-
-function hideLoading(element) {
-    if (element) {
-        element.classList.remove('loading');
-        element.setAttribute('aria-busy', 'false');
-    }
-}
-
-/**
- * Show error message to user (console + potential toast).
- */
-function showError(message) {
-    console.error('User-facing error:', message);
-}
-
-/**
- * Escape HTML to prevent XSS.
- */
-function escapeHtml(unsafe) {
-    if (!unsafe) return '';
-    return String(unsafe)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-/**
- * Format response text as markdown (using marked.js).
- */
-function formatResponse(text) {
-    if (!text) return '';
-    if (typeof marked === 'undefined' || !marked.parse) {
-        return escapeHtml(text);
-    }
-    try {
-        return marked.parse(text);
-    } catch (e) {
-        console.error('Markdown parse error:', e);
-        return escapeHtml(text);
-    }
-}
-
-/**
- * Parse trend date helpers.
- */
-function parseTrendDate(dateStr) {
-    if (!dateStr) return null;
-    dateStr = String(dateStr);
-
-    // Normalize to ISO format (append 'Z' if missing and not explicitly local)
-    if (!dateStr.includes('T')) {
-        if (dateStr.length === 10) dateStr += 'T00:00:00'; // YYYY-MM-DD
-        else if (dateStr.length === 13) dateStr = dateStr.replace(' ', 'T') + ':00:00'; // YYYY-MM-DD HH
-        else if (dateStr.length === 16) dateStr = dateStr.replace(' ', 'T') + ':00'; // YYYY-MM-DD HH:MM
-    }
-    if (!dateStr.endsWith('Z')) dateStr += 'Z'; // Treat as UTC
-    return new Date(dateStr);
-}
-
-// =============================================================================
-// DATA FETCHING & RENDERING
-// =============================================================================
-
-/**
- * Load Summary Stats (Cards).
- */
-async function loadStats(params = {}) {
-    try {
-        const query = new URLSearchParams(params).toString();
-        const data = await fetchAPI(`${API_BASE}/summary?${query}`);
-
-        if (!data) throw new Error('Empty data');
-
-        const updates = [
-            ['statDaily', data.messages_today],
-            ['statWeekly', data.messages_week],
-            ['statMonthly', data.messages_month],
-            ['statPositive', data.positive_percentage != null ? data.positive_percentage + '%' : '--%'],
-            ['statNegative', data.negative_percentage != null ? data.negative_percentage + '%' : '--%']
-        ];
-
-        updates.forEach(([id, val]) => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = val;
+function initFeedbackControls() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            state.fbRating = parseInt(e.target.dataset.rating);
+            state.fbPage = 1;
+            loadFeedback();
         });
+    });
 
-    } catch (e) {
-        showError(`Failed to load stats: ${e.message}`);
-        document.querySelectorAll('.stat-value').forEach(el => {
-            if (el.textContent === '--') el.textContent = 'Error';
-        });
-    }
-}
+    // Debounced Search
+    let timeout;
+    document.getElementById('feedbackSearch').addEventListener('input', (e) => {
+        state.fbSearch = e.target.value;
+        state.fbPage = 1;
+        clearTimeout(timeout);
+        timeout = setTimeout(loadFeedback, 500);
+    });
 
-/**
- * Load Spend Stats.
- */
-async function loadSpend() {
-    try {
-        const data = await fetchAPI(`${API_BASE}/spend`);
-
-        // Update Stats Cards
-        ['today', 'week', 'month', 'all_time'].forEach(key => {
-            const el = document.getElementById(`spend${key.charAt(0).toUpperCase() + key.slice(1).replace('_', '')}`);
-            if (el) el.textContent = formatCurrency(data[key]);
-        });
-
-        // Update Token Counts
-        const elQuery = document.getElementById('spendQueryCount');
-        if (elQuery) elQuery.textContent = formatNumber(data.all_time_queries);
-
-        ['input', 'output', 'embedding'].forEach(type => {
-            const tokens = data.all_time_tokens?.[type] || 0;
-            const el = document.getElementById(`spend${type.charAt(0).toUpperCase() + type.slice(1)}Tokens`);
-            if (el) el.textContent = formatNumber(tokens);
-        });
-
-        // Pricing Info
-        if (data.pricing) {
-            const elIn = document.getElementById('pricingInput');
-            const elOut = document.getElementById('pricingOutput');
-            if (elIn) elIn.textContent = data.pricing.input_per_1m;
-            if (elOut) elOut.textContent = data.pricing.output_per_1m;
+    document.getElementById('prevPage').addEventListener('click', () => {
+        if (state.fbPage > 1) {
+            state.fbPage--;
+            loadFeedback();
         }
+    });
 
-        // Calculate Average
-        const elAvg = document.getElementById('spendAvg');
-        if (elAvg) {
-            const total = data.all_time || 0;
-            const count = data.all_time_queries || 1;
-            elAvg.textContent = formatCurrency(total / count);
-        }
-
-    } catch (e) {
-        showError(`Failed to load spend: ${e.message}`);
-    }
+    document.getElementById('nextPage').addEventListener('click', () => {
+        state.fbPage++;
+        loadFeedback();
+    });
 }
 
-// =============================================================================
-// FEEDBACK & PAGINATION LOGIC
-// =============================================================================
-
-/**
- * Load both feedback tabs (resetting to page 1).
- */
-async function loadFeedback(params = {}) {
-    // Reset pagination
-    paginationState.positive.currentPage = 1;
-    paginationState.negative.currentPage = 1;
-
-    // Load both tabs parallel
-    await Promise.all([
-        loadFeedbackTab('positive', params),
-        loadFeedbackTab('negative', params)
-    ]);
-
-    // Update controls
-    updatePaginationControls('positive');
-    updatePaginationControls('negative');
-}
-
-/**
- * Load specific feedback tab.
- */
-async function loadFeedbackTab(sentiment, params = {}) {
-    const rating = sentiment === 'positive' ? 'up' : 'down';
-    const containerId = `${sentiment}Content`;
-    const state = paginationState[sentiment];
-
-    const container = document.getElementById(containerId);
-    if (!container) return;
+async function loadFeedback() {
+    const params = getQueryParams();
+    params.append('rating', state.fbRating);
+    params.append('page', state.fbPage);
+    params.append('page_size', 20);
+    if (state.fbSearch) params.append('search', state.fbSearch);
 
     try {
-        const query = new URLSearchParams(params);
-        query.set('rating', rating);
-        query.set('page', state.currentPage);
-        query.set('page_size', state.pageSize);
-
-        const data = await fetchAPI(`${API_BASE}/feedback?${query.toString()}`);
-
-        state.totalCount = data.totalCount || 0;
-        renderFeedbackCards(data.items || [], containerId);
-
-    } catch (e) {
-        console.error(`Error loading ${sentiment}:`, e);
-        showError(`Failed to load ${sentiment}: ${e.message}`);
-        container.innerHTML = `<div class="empty-state">Unable to load feedback. Server reported: ${e.message}</div>`;
+        const data = await fetchAPI(`/feedback?${params}`);
+        renderFeedbackList(data);
+    } catch (err) {
+        console.error("Failed to load feedback", err);
+        // Don't separate error UI for this part, just log
     }
 }
 
-/**
- * Change page for the given tab.
- */
-async function changePage(sentiment, direction) {
-    const state = paginationState[sentiment];
-    const maxPage = Math.ceil(state.totalCount / state.pageSize);
-    const newPage = state.currentPage + direction;
-
-    if (newPage < 1 || newPage > maxPage) return;
-
-    state.currentPage = newPage;
-
-    // Re-apply current global filters
-    const params = getGlobalFilterParams();
-    await loadFeedbackTab(sentiment, params);
-    updatePaginationControls(sentiment);
-}
-
-/**
- * Determine active tab and change page (Warning: used by HTML onclick).
- */
-function changePageForActiveTab(direction) {
-    const activeTab = document.querySelector('.tab.active');
-    if (!activeTab) return;
-    changePage(activeTab.dataset.tab, direction);
-}
-
-/**
- * Update logic for pagination buttons visibility.
- */
-function updatePaginationControls(sentiment) {
-    const activeTab = document.querySelector('.tab.active');
-    if (!activeTab || activeTab.dataset.tab !== sentiment) return; // Only update if visible
-
-    const state = paginationState[sentiment];
-    const totalPages = Math.ceil(state.totalCount / state.pageSize);
-    const controls = document.getElementById('feedbackPagination');
-
-    if (!controls) return;
-
-    if (state.totalCount <= state.pageSize) {
-        controls.style.display = 'none';
-        return;
-    }
-
-    controls.style.display = 'flex';
-
-    const prevBtn = controls.querySelector('.prev-btn');
-    const nextBtn = controls.querySelector('.next-btn');
-    const pageInfo = controls.querySelector('.page-info');
-
-    if (prevBtn) prevBtn.disabled = state.currentPage === 1;
-    if (nextBtn) nextBtn.disabled = state.currentPage >= totalPages;
-    if (pageInfo) pageInfo.textContent = `Page ${state.currentPage} of ${totalPages}`;
-}
-
-/**
- * Render list of feedback cards.
- */
-function renderFeedbackCards(items, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
+function renderFeedbackList(data) {
+    const container = document.getElementById('feedbackList');
     container.innerHTML = '';
 
-    if (!items.length) {
-        container.innerHTML = '<div class="empty-state">No feedback found for this period.</div>';
-        return;
+    if (data.items.length === 0) {
+        container.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No feedback found.</div>';
     }
 
-    items.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'feedback-detail-card';
+    data.items.forEach(item => {
+        const el = document.createElement('div');
+        el.className = 'feedback-item';
+        el.onclick = () => el.classList.toggle('expanded');
 
-        // Parse date
-        let dateStr = 'Unknown Date';
-        if (item.timestamp) {
-            dateStr = new Date(item.timestamp).toLocaleString();
-        }
+        const date = new Date(item.timestamp).toLocaleString();
 
-        card.innerHTML = `
-            <div class="feedback-header">
+        el.innerHTML = `
+            <div class="feedback-summary">
                 <div>
-                    <span class="feedback-icon ${item.rating === 'up' ? 'positive' : 'negative'}">
-                        <i class="fas fa-thumbs-${item.rating === 'up' ? 'up' : 'down'}"></i>
-                    </span>
-                    <span class="feedback-date">${dateStr}</span>
+                    <strong>${escapeHTML(item.user_query.substring(0, 60))}...</strong>
                 </div>
-                <i class="fas fa-chevron-down expand-icon"></i>
+                <div class="fb-meta">
+                    ${date} <i class="fas fa-chevron-down"></i>
+                </div>
             </div>
-            <div class="feedback-body">
-                <div class="feedback-section-title">User Query</div>
-                <div class="feedback-user-query">${escapeHtml(item.user_query)}</div>
-                
-                <div class="feedback-section-title">AI Response</div>
-                <div class="feedback-bot-response">
-                    <div class="markdown-body">${formatResponse(item.bot_response || '')}</div>
+            <div class="fb-details">
+                <div class="fb-query">
+                    <span class="fb-label">Query</span>
+                    ${escapeHTML(item.user_query)}
+                </div>
+                <div class="fb-response">
+                    <span class="fb-label">Response</span>
+                    ${escapeHTML(item.bot_response)}
                 </div>
             </div>
         `;
+        container.appendChild(el);
+    });
 
-        card.querySelector('.feedback-header').addEventListener('click', function () {
-            this.parentElement.classList.toggle('expanded');
-        });
+    // Pagination
+    document.getElementById('pageInfo').innerText = `Page ${data.page} of ${data.pages || 1}`;
+    document.getElementById('prevPage').disabled = data.page <= 1;
+    document.getElementById('nextPage').disabled = data.page >= data.pages;
+}
 
-        container.appendChild(card);
+// --- Rendering: Trends (Charts) ---
+
+let charts = {};
+
+function renderTrends(data) {
+    // 1. Volume Chart
+    renderChart('chartVolume', 'line', {
+        labels: data.message_volume.labels,
+        datasets: [
+            {
+                label: 'Queries',
+                data: data.message_volume.queries,
+                borderColor: '#3b82f6',
+                tension: 0.3
+            },
+            {
+                label: 'Conversations',
+                data: data.message_volume.conversations,
+                borderColor: '#10b981',
+                tension: 0.3
+            }
+        ]
+    });
+
+    // 2. Feedback Chart
+    renderChart('chartFeedback', 'bar', {
+        labels: data.feedback_trend.labels,
+        datasets: [
+            {
+                label: 'Positive %',
+                data: data.feedback_trend.positive_rate,
+                backgroundColor: '#10b981'
+            },
+            {
+                label: 'Negative %',
+                data: data.feedback_trend.negative_rate,
+                backgroundColor: '#ef4444'
+            }
+        ]
+    });
+
+    // 3. Category Chart
+    const cats = Object.entries(data.categories); // [['hw', 10], ...]
+    renderChart('chartCategories', 'doughnut', {
+        labels: cats.map(c => titleCase(c[0])),
+        datasets: [{
+            data: cats.map(c => c[1]),
+            backgroundColor: [
+                '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+                '#8b5cf6', '#ec4899', '#6366f1', '#64748b'
+            ]
+        }]
     });
 }
 
-// =============================================================================
-// TREND CHARTS
-// =============================================================================
+function renderChart(id, type, data, options = {}) {
+    const ctx = document.getElementById(id).getContext('2d');
 
-async function loadTrend(days = 7, startDate = null, endDate = null) {
-    try {
-        // Granularity Logic
-        let granularity = 'day';
-        if (days === 1) granularity = 'hour';
-        if (days === 365) granularity = 'month';
-        if (days === 'custom' && startDate === endDate) granularity = 'hour';
-
-        // Auto-set today date if days=1
-        if (days === 1 && !startDate) {
-            const today = new Date().toISOString().split('T')[0];
-            startDate = endDate = today;
-        }
-
-        const offset = -new Date().getTimezoneOffset();
-        const params = new URLSearchParams({
-            days: days === 'custom' ? 0 : days,
-            granularity: granularity,
-            timezone_offset: offset
-        });
-
-        if (startDate && endDate) {
-            params.set('start_date', startDate);
-            params.set('end_date', endDate);
-        }
-
-        const [msgData, fbData] = await Promise.all([
-            fetchAPI(`${API_BASE}/messages-trend?${params}`),
-            fetchAPI(`${API_BASE}/feedback-trend?${params}`)
-        ]);
-
-        renderTrendChart(msgData.trend, granularity);
-        renderSatisfactionChart(fbData, granularity, days === 1);
-        updateTrendTotals(msgData.trend, fbData, days === 1);
-
-    } catch (e) {
-        showError(`Trend error: ${e.message}`);
-        ['noTrendData', 'trendError', 'feedbackError'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.style.display = 'block';
-        });
+    if (charts[id]) {
+        charts[id].destroy();
     }
-}
 
-function renderTrendChart(trendData, granularity) {
-    const ctx = document.getElementById('trendChart')?.getContext('2d');
-    if (!ctx) return;
-
-    if (window.myTrendChart) window.myTrendChart.destroy();
-
-    const labels = trendData.map(t => formatTrendLabel(t.date, granularity));
-    const data = trendData.map(t => t.count);
-
-    window.myTrendChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Messages',
-                data: data,
-                backgroundColor: CHART_COLORS.primary,
-                borderRadius: 4,
-                barPercentage: 0.6
-            }]
-        },
+    charts[id] = new Chart(ctx, {
+        type: type,
+        data: data,
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true, grid: { color: CHART_COLORS.grid } },
-                x: { display: true, grid: { display: false } }
-            }
-        }
-    });
-
-    const noData = document.getElementById('noTrendData');
-    if (noData) noData.style.display = data.some(v => v > 0) ? 'none' : 'block';
-}
-
-function renderSatisfactionChart(fbData, granularity, showRealtime) {
-    const ctx = document.getElementById('feedbackChart')?.getContext('2d');
-    if (!ctx) return;
-
-    if (window.myFeedbackChart) window.myFeedbackChart.destroy();
-
-    const trend = fbData.trend || [];
-    let cumulativeUp = fbData.baseline_up || 0;
-    let cumulativeTotal = cumulativeUp + (fbData.baseline_down || 0);
-
-    const labels = [];
-    const points = [];
-
-    trend.forEach(t => {
-        cumulativeUp += t.up;
-        cumulativeTotal += (t.up + t.down);
-        labels.push(formatTrendLabel(t.date, granularity));
-        points.push(cumulativeTotal > 0 ? ((cumulativeUp / cumulativeTotal) * 100).toFixed(1) : 0);
-    });
-
-    window.myFeedbackChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Satisfaction %',
-                data: points,
-                borderColor: CHART_COLORS.green,
-                backgroundColor: 'rgba(72, 187, 120, 0.1)',
-                tension: 0.1,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' }, grid: { color: CHART_COLORS.grid } },
-                x: { display: true, grid: { display: false } }
-            }
+            scales: type === 'doughnut' ? {} : {
+                x: {
+                    type: 'time',
+                    time: { unit: 'day', displayFormats: { day: 'MMM d' } }
+                },
+                y: { beginAtZero: true }
+            },
+            ...options
         }
     });
 }
 
-function updateTrendTotals(msgTrend, fbData, isToday) {
-    const elMsg = document.getElementById('trendTotalMsg');
-    const elSat = document.getElementById('trendTotalSat');
-    if (!elMsg || !elSat) return;
+// --- Rendering: Spend ---
 
-    if (!isToday) {
-        elMsg.textContent = '';
-        elSat.textContent = '';
-        return;
-    }
+function renderSpend(data) {
+    setText('spend-total', `$${data.total_spend}`);
+    setText('spend-tokens', `$${data.token_cost}`);
+    setText('spend-avg', `$${data.avg_per_query}`);
 
-    const totalMsg = msgTrend.reduce((sum, t) => sum + t.count, 0);
+    const tbody = document.getElementById('tokenTableBody');
+    const bd = data.breakdown;
 
-    // Total Sat Calculation
-    const totalUp = (fbData.baseline_up || 0) + (fbData.trend || []).reduce((s, t) => s + t.up, 0);
-    const totalDown = (fbData.baseline_down || 0) + (fbData.trend || []).reduce((s, t) => s + t.down, 0);
-    const total = totalUp + totalDown;
-    const sat = total > 0 ? ((totalUp / total) * 100).toFixed(1) : 0;
-
-    elMsg.textContent = `(${totalMsg})`;
-    elSat.textContent = `(${sat}%)`;
+    tbody.innerHTML = `
+        <tr><td>Total Queries</td><td>${formatNum(bd.queries)}</td></tr>
+        <tr><td>Input Tokens</td><td>${formatNum(bd.input_tokens)}</td></tr>
+        <tr><td>Output Tokens</td><td>${formatNum(bd.output_tokens)}</td></tr>
+        <tr><td>Embedding Tokens</td><td>${formatNum(bd.embedding_tokens)}</td></tr>
+    `;
 }
 
-function formatTrendLabel(dateStr, granularity) {
-    const d = parseTrendDate(dateStr);
-    if (!d) return '';
+// --- Utilities ---
 
-    if (granularity === 'hour') return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    if (granularity === 'month') return d.toLocaleDateString('en-US', { month: 'short' });
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+function handleExport() {
+    const params = getQueryParams();
+    window.location.href = `${API_BASE}/feedback/export?${params}`;
 }
 
-function getGlobalFilterParams() {
-    const period = document.getElementById('periodFilter')?.value;
-    const params = { timezone_offset: -new Date().getTimezoneOffset() };
-
-    if (period === 'custom') {
-        params.start_date = document.getElementById('startDate')?.value;
-        params.end_date = document.getElementById('endDate')?.value;
-        params.period = 'custom';
-    } else {
-        params.period = period;
-    }
-    return params;
+function startAutoRefresh() {
+    if (state.refreshTimer) clearInterval(state.refreshTimer);
+    state.refreshTimer = setInterval(() => {
+        // Only refresh if tab is visible to save resources
+        if (!document.hidden && !state.loading) {
+            console.log("Auto-refreshing...");
+            fetchData();
+            // Check alerts silently
+            fetchAPI('/run-alert-check').catch(e => console.warn(e));
+        }
+    }, REFRESH_INTERVAL);
 }
 
-// =============================================================================
-// INITIALIZATION
-// =============================================================================
+function setLoading(bool) {
+    state.loading = bool;
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.style.display = bool ? 'flex' : 'none';
+}
 
-document.addEventListener('DOMContentLoaded', () => {
+function showError(msg) {
+    const banner = document.getElementById('errorBanner');
+    document.getElementById('errorMessage').innerText = msg;
+    banner.style.display = 'flex';
+}
 
-    // 1. Navigation (Tabs)
-    const navItems = document.querySelectorAll('.nav-item');
-    const sections = ['overview', 'trends', 'spend'];
+function hideError() {
+    document.getElementById('errorBanner').style.display = 'none';
+}
 
-    navItems.forEach(item => {
-        item.addEventListener('click', () => {
-            const view = item.dataset.view;
-            if (!view) return;
+function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.innerText = val !== undefined && val !== null ? val : '-';
+}
 
-            // UI Updates
-            navItems.forEach(n => n.classList.remove('active'));
-            item.classList.add('active');
+function formatNum(n) {
+    return new Intl.NumberFormat().format(n);
+}
 
-            sections.forEach(s => {
-                const el = document.getElementById(s);
-                if (el) el.classList.toggle('active', s === view);
-            });
+function escapeHTML(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
 
-            document.getElementById('viewTitle').textContent = item.textContent.trim();
-
-            // Data Triggers
-            if (view === 'trends') loadTrend(1);
-            if (view === 'spend') loadSpend();
-        });
-    });
-
-    // 2. Feedback Tabs (Positive/Negative)
-    const fbTabs = document.querySelectorAll('.tab');
-    fbTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            fbTabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-
-            const sentiment = tab.dataset.tab;
-            ['positiveContent', 'negativeContent'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.classList.toggle('active', id.startsWith(sentiment));
-            });
-
-            updatePaginationControls(sentiment);
-        });
-    });
-
-    // 3. Global Time Filter
-    const filter = document.getElementById('periodFilter');
-    if (filter) {
-        filter.addEventListener('change', (e) => {
-            const isCustom = e.target.value === 'custom';
-            const picker = document.getElementById('customDateRange');
-            if (picker) picker.style.display = isCustom ? 'flex' : 'none';
-            if (!isCustom) refreshAll();
-        });
-    }
-
-    document.getElementById('applyDateBtn')?.addEventListener('click', refreshAll);
-
-    // 4. Export
-    document.getElementById('exportBtn')?.addEventListener('click', () => {
-        const params = getGlobalFilterParams();
-        const query = new URLSearchParams(params).toString();
-        window.location.href = `${API_BASE}/feedback/export?${query}`;
-    });
-
-    // Initial Load
-    refreshAll();
-
-    // Helper to refresh everything
-    function refreshAll() {
-        const params = getGlobalFilterParams();
-        loadStats(params);
-        loadFeedback(params);
-        loadTrend(1);
-    }
-
-    console.log('Admin JS Loaded & Cleaned');
-});
-
-// Expose checks for inline HTML handlers
-window.changePageForActiveTab = changePageForActiveTab;
+function titleCase(str) {
+    return str.replace(/\b\w/g, s => s.toUpperCase());
+}

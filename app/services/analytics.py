@@ -36,11 +36,11 @@ class QueryLog(Base):
     __tablename__ = 'query_logs'
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
     message = Column(String)
     category = Column(String)
     is_initial = Column(Integer, default=0) # 0=False, 1=True
-    is_fallback = Column(Integer, default=0) # 0=False, 1=True (Low confidence/I don't know)
+    is_fallback = Column(Integer, default=0) # 0=False, 1=True
     input_tokens = Column(Integer, default=0)
     output_tokens = Column(Integer, default=0)
     embedding_tokens = Column(Integer, default=0)
@@ -55,17 +55,17 @@ class FeedbackLog(Base):
         timestamp: When the feedback was given (UTC)
         user_query: The user's original question
         bot_response: The bot's response text
-        rating: 'up' or 'down'
+        rating: 1 (positive), -1 (negative), 0 (none/neutral)
         message_id: Unique ID of the bot message being rated
     """
     __tablename__ = 'feedback_logs'
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
     user_query = Column(String)
     bot_response = Column(String)
-    rating = Column(String)  # 'up', 'down', or 'none' (deleted)
-    message_id = Column(String, index=True, nullable=True) # key to prevent duplicates
+    rating = Column(Integer)  # 1=up, -1=down, 0=none
+    message_id = Column(String, index=True, nullable=True)
 
 class ExpenseLog(Base):
     """
@@ -74,11 +74,10 @@ class ExpenseLog(Base):
     __tablename__ = 'expense_logs'
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    category = Column(String) # 'manual', 'tts', 'embedding_ingestion'
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    category = Column(String) 
     description = Column(String)
     amount = Column(Float) # Cost in USD
-
 
 
 class EscalationLog(Base):
@@ -90,7 +89,7 @@ class EscalationLog(Base):
     """
     __tablename__ = 'escalation_logs'
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
     type = Column(String)
 
 
@@ -165,7 +164,11 @@ class AnalyticsService:
         
         Creates database connection and initializes tables if they don't exist.
         """
-        self.engine = create_engine(settings.DATABASE_URL)
+        db_url = settings.DATABASE_URL
+        if db_url and db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+        self.engine = create_engine(db_url)
         self.SessionLocal = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -188,27 +191,8 @@ class AnalyticsService:
         ]
 
     def _init_db(self) -> None:
-        """Create database tables if they don't exist and run migrations."""
+        """Create database tables if they don't exist."""
         Base.metadata.create_all(bind=self.engine)
-        
-        # Simple migration checkpoint: Add exists message_id column if missing
-        # This is safe for SQLite which doesn't support 'IF NOT EXISTS' in add column easily everywhere,
-        # but we do a python check first.
-        try:
-            with self.engine.connect() as conn:
-                # Check if column exists
-                # This works for SQLite. For PG we might need different query if this fails.
-                # Simplest universal way: select one row and check keys
-                result = conn.execute(text("PRAGMA table_info(feedback_logs)"))
-                columns = [row[1] for row in result.fetchall()]
-                
-                if 'message_id' not in columns:
-                    logger.info("Migrating DB: Adding message_id to feedback_logs")
-                    conn.execute(text("ALTER TABLE feedback_logs ADD COLUMN message_id VARCHAR"))
-                    conn.commit()
-        except Exception as e:
-            # Might fail on non-sqlite or if permissions issues, but normally safe
-            logger.warning(f"Database migration check failed (might be expected on fresh db): {e}")
 
     def categorize_query(self, message: str) -> str:
         """

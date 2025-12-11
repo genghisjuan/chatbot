@@ -1,257 +1,229 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JUNA Analytics</title>
-    <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script
-        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link rel="stylesheet" href="/static/admin/admin.css">
+    <title>Juna Admin Dashboard</title>
+    
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="admin.css">
 </head>
-
 <body>
-    <div class="app">
-        <aside class="sidebar">
-            <div class="logo"><i class="fas fa-chart-line"></i> JUNA Analytics</div>
-            <div class="nav-item active" data-view="overview" tabindex="0" role="button"><i class="fas fa-home"></i>
-                Overview</div>
-            <div class="nav-item" data-view="trends" tabindex="0" role="button"><i class="fas fa-chart-area"></i> Trends
+
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <span>Juna Admin</span>
             </div>
-            <div class="nav-item" data-view="spend" tabindex="0" role="button"><i class="fas fa-dollar-sign"></i> Spend
-            </div>
-            <div class="sidebar-footer"><a href="/"><i class="fas fa-arrow-left"></i> Back to Chatbot</a></div>
-        </aside>
-
-        <main class="main">
-            <header class="header">
-                <h1 id="viewTitle">Overview</h1>
-
-                <!-- Global Time Filter -->
-                <div class="global-filter" style="display: flex; align-items: center; gap: 10px;">
-                    <select id="periodFilter" class="period-select">
-                        <option value="today">Today</option>
-                        <option value="last_7_days" selected>Last 7 Days</option>
-                        <option value="last_30_days">Last 30 Days</option>
-                        <option value="month">This Month</option>
-                        <option value="year">This Year</option>
-                        <option value="custom">Custom Range</option>
-                    </select>
-                    <div id="customDateRange" class="date-range" style="display:none; align-items: center; gap: 5px;">
-                        <input type="date" id="startDate" class="date-input">
-                        <span class="date-separator">to</span>
-                        <input type="date" id="endDate" class="date-input">
-                        <button id="applyDateBtn" class="apply-btn">Apply</button>
-                    </div>
-                    <button id="exportBtn" class="export-btn"><i class="fas fa-download"></i></button>
-                </div>
-            </header>
-
-            <div class="content">
-                <!-- Overview -->
-                <div class="view active" id="overview">
-                    <!-- Compact Stats Grid -->
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-icon blue"><i class="fas fa-comment-alt"></i></div>
-                            <div class="stat-info">
-                                <div class="stat-value" id="statDaily">--</div>
-                                <div class="stat-label">Chats Today</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon purple"><i class="fas fa-comments"></i></div>
-                            <div class="stat-info">
-                                <div class="stat-value" id="statWeekly">--</div>
-                                <div class="stat-label">Chats This Week</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon indigo"><i class="fas fa-history"></i></div>
-                            <div class="stat-info">
-                                <div class="stat-value" id="statMonthly">--</div>
-                                <div class="stat-label">Chats This Month</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon green"><i class="fas fa-thumbs-up"></i></div>
-                            <div class="stat-info">
-                                <div class="stat-value" id="statPositive">--%</div>
-                                <div class="stat-label">Positive Feedback</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon red"><i class="fas fa-thumbs-down"></i></div>
-                            <div class="stat-info">
-                                <div class="stat-value" id="statNegative">--%</div>
-                                <div class="stat-label">Negative Feedback</div>
-                            </div>
-                        </div>
-                    </div>
-
-
-
-                    <div class="detail-section">
-                        <div class="detail-header">
-                            <!-- Tabs on the left -->
-                            <div class="tabs-container">
-                                <div class="tab positive active" data-tab="positive" tabindex="0" role="button">
-                                    <i class="fas fa-thumbs-up"></i> Positive
-                                </div>
-                                <div class="tab negative" data-tab="negative" tabindex="0" role="button">
-                                    <i class="fas fa-thumbs-down"></i> Negative
-                                </div>
-                            </div>
-
-                            <!-- Pagination controls on the right (shows for active tab) -->
-                            <div id="feedbackPagination" class="pagination-controls-header" style="display: none;">
-                                <button class="pagination-btn prev-btn" onclick="changePageForActiveTab(-1)">
-                                    <i class="fas fa-chevron-left"></i>
-                                </button>
-                                <span class="page-info">Page 1 of 1</span>
-                                <button class="pagination-btn next-btn" onclick="changePageForActiveTab(1)">
-                                    <i class="fas fa-chevron-right"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="detail-content">
-                            <div class="tab-content active" id="positiveContent"></div>
-                            <div class="tab-content" id="negativeContent"></div>
-                        </div>
-                    </div>
-                </div>
-
-
-                <!-- Trends -->
-                <div class="view" id="trends">
-                    <!-- Kept Existing Trends View -->
-                    <div class="detail-section">
-                        <!-- Trend controls removed from here -->
-                        <div class="detail-content">
-                            <!-- Messages Chart -->
-                            <h3 style="color: #cbd5e0; margin-bottom: 15px; margin-left: 5px;">
-                                Queries Over Time <span id="trendTotalMsg"
-                                    style="color: #667eea; font-size: 0.9em; margin-left: 8px;"></span>
-                            </h3>
-                            <div class="chart-container">
-                                <canvas id="trendChart"></canvas>
-                                <div id="noTrendData" class="empty-overlay">No data available for this range</div>
-                                <div id="trendError" class="empty-overlay error-overlay"
-                                    style="display:none; color: #ef4444;">Failed to load data</div>
-                            </div>
-
-                            <!-- Satisfaction Chart -->
-                            <h3 style="color: #cbd5e0; margin-top: 30px; margin-bottom: 15px; margin-left: 5px;">
-                                Satisfaction Rate <span id="trendTotalSat"
-                                    style="color: #48bb78; font-size: 0.9em; margin-left: 8px;"></span>
-                            </h3>
-                            <div class="chart-container">
-                                <canvas id="feedbackChart"></canvas>
-                                <div id="feedbackError" class="empty-overlay error-overlay"
-                                    style="display:none; color: #ef4444;">Failed to load data</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Spend View -->
-                <div class="view" id="spend">
-                    <div
-                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <h2 style="font-size: 1.5em; font-weight: bold; color: #fff; margin: 0;">Financial Overview</h2>
-                    </div>
-                    <div class="stats-grid">
-                        <div class="stat-card"
-                            title="Total cost including Chat generation, Embeddings, and Manual expenses for Today.">
-                            <div class="stat-icon blue"><i class="fas fa-dollar-sign"></i></div>
-                            <div class="stat-info">
-                                <div class="stat-value" id="spendToday">$0.00</div>
-                                <div class="stat-label">Today</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon purple"><i class="fas fa-calendar-week"></i></div>
-                            <div class="stat-info">
-                                <div class="stat-value" id="spendWeek">$0.00</div>
-                                <div class="stat-label">This Week</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon indigo"><i class="fas fa-calendar-alt"></i></div>
-                            <div class="stat-info">
-                                <div class="stat-value" id="spendMonth">$0.00</div>
-                                <div class="stat-label">This Month</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon green"><i class="fas fa-coins"></i></div>
-                            <div class="stat-info">
-                                <div class="stat-value" id="spendAllTime">$0.00</div>
-                                <div class="stat-label">All Time <i class="fas fa-info-circle"
-                                        style="font-size: 0.8em; opacity: 0.7; margin-left: 4px;"
-                                        title="Includes: Chat Generation (GPT-4o-mini), RAG Embeddings, and Manual Expenses."></i>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon" style="background: rgba(236, 201, 75, 0.1); color: #ecc94b;"><i
-                                    class="fas fa-receipt"></i></div>
-                            <div class="stat-info">
-                                <div class="stat-value" id="spendAvg">$0.00</div>
-                                <div class="stat-label">Avg per Query</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="section" style="margin-top: 20px;">
-                        <div class="section-header">
-                            <h2>Token Breakdown</h2>
-                        </div>
-                        <div class="detail-content" style="padding: 20px;">
-                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;">
-                                <div style="background: #1a1a28; padding: 20px; border-radius: 8px;">
-                                    <div style="color: #6b7280; font-size: 0.85em;">Total Queries</div>
-                                    <div id="spendQueryCount" style="font-size: 1.5em; color: #fff; margin-top: 8px;">0
-                                    </div>
-                                </div>
-                                <div style="background: #1a1a28; padding: 20px; border-radius: 8px;">
-                                    <div style="color: #6b7280; font-size: 0.85em;">Input Tokens</div>
-                                    <div id="spendInputTokens"
-                                        style="font-size: 1.5em; color: #667eea; margin-top: 8px;">0</div>
-                                </div>
-                                <div style="background: #1a1a28; padding: 20px; border-radius: 8px;">
-                                    <div style="color: #6b7280; font-size: 0.85em;">Output Tokens</div>
-                                    <div id="spendOutputTokens"
-                                        style="font-size: 1.5em; color: #48bb78; margin-top: 8px;">0</div>
-                                </div>
-                                <div style="background: #1a1a28; padding: 20px; border-radius: 8px;">
-                                    <div style="color: #6b7280; font-size: 0.85em;">Embedding Tokens</div>
-                                    <div id="spendEmbeddingTokens"
-                                        style="font-size: 1.5em; color: #ecc94b; margin-top: 8px;">0</div>
-                                </div>
-                            </div>
-                            <div
-                                style="margin-top: 20px; padding: 15px; background: rgba(102, 126, 234, 0.1); border-radius: 8px; color: #a0aec0; font-size: 0.9em;">
-                                <i class="fas fa-info-circle" style="color: #667eea;"></i>
-                                <span style="margin-left: 8px;">Pricing: $<span id="pricingInput">0.15</span>/1M input
-                                    tokens, $<span id="pricingOutput">0.60</span>/1M output tokens (<span
-                                        id="pricingModel">gpt-4o-mini</span>)</span>
-                            </div>
-                        </div>
-                    </div>
+            <span class="status-badge" id="systemStatus">Online</span>
+        </div>
+        
+        <div class="header-right">
+            <!-- Global Date Filter -->
+            <div class="date-filter-group">
+                <select id="rangeSelect" class="form-select">
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                    <option value="year">This Year</option>
+                    <option value="custom">Custom Range</option>
+                </select>
+                
+                <div id="customDateInputs" class="custom-dates" style="display: none;">
+                    <input type="date" id="startDate" class="form-input">
+                    <span class="separator">to</span>
+                    <input type="date" id="endDate" class="form-input">
+                    <button id="applyCustomBtn" class="btn btn-sm btn-primary">Apply</button>
                 </div>
             </div>
+
+            <button id="exportBtn" class="btn btn-outline">
+                <i class="fas fa-download"></i> Export CSV
+            </button>
+            
+            <button id="refreshBtn" class="btn btn-icon" title="Refresh Data">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="app-container">
+        
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="nav-item active" data-view="overview" role="button" tabindex="0">
+                <i class="fas fa-home"></i> Overview
+            </div>
+            <div class="nav-item" data-view="trends" role="button" tabindex="0">
+                <i class="fas fa-chart-line"></i> Trends
+            </div>
+            <div class="nav-item" data-view="spend" role="button" tabindex="0">
+                <i class="fas fa-dollar-sign"></i> Spend
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="content-area">
+            
+            <!-- Loading Indicator -->
+            <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+                <div class="spinner"></div>
+            </div>
+
+            <!-- Error Banner -->
+            <div id="errorBanner" class="error-banner" style="display: none;">
+                <i class="fas fa-exclamation-circle"></i>
+                <span id="errorMessage">An error occurred</span>
+                <button class="close-btn" onclick="this.parentElement.style.display='none'">&times;</button>
+            </div>
+
+            <!-- VIEW: OVERVIEW -->
+            <section id="view-overview" class="view-section active">
+                <h2 class="section-title">Performance Overview</h2>
+                
+                <!-- KPI Grid -->
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Total Conversations</div>
+                        <div class="kpi-value" id="kpi-conversations">-</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Total Queries</div>
+                        <div class="kpi-value" id="kpi-queries">-</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Avg Queries/Conv</div>
+                        <div class="kpi-value" id="kpi-avg-queries">-</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Escalations</div>
+                        <div class="kpi-subtext">
+                            <span id="kpi-phone-esc">-</span> <i class="fas fa-phone"></i> &nbsp;|&nbsp; 
+                            <span id="kpi-email-esc">-</span> <i class="fas fa-envelope"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="kpi-card success-border">
+                        <div class="kpi-label">Positive Feedback</div>
+                        <div class="kpi-value text-success" id="kpi-pos-count">-</div>
+                        <div class="kpi-subtext" id="kpi-pos-rate">-%</div>
+                    </div>
+                    <div class="kpi-card error-border">
+                        <div class="kpi-label">Negative Feedback</div>
+                        <div class="kpi-value text-error" id="kpi-neg-count">-</div>
+                        <div class="kpi-subtext" id="kpi-neg-rate">-%</div>
+                    </div>
+                </div>
+
+                <!-- Feedback Section -->
+                <div class="card feedback-section">
+                    <div class="card-header">
+                        <h3>Feedback Review</h3>
+                        <div class="tab-controls">
+                            <button class="tab-btn active" data-rating="1">Positive</button>
+                            <button class="tab-btn" data-rating="-1">Negative</button>
+                        </div>
+                    </div>
+                    
+                    <div class="toolbar">
+                        <input type="text" id="feedbackSearch" placeholder="Search query..." class="form-input search-input">
+                    </div>
+
+                    <div class="feedback-list" id="feedbackList">
+                        <!-- Items rendered here -->
+                    </div>
+
+                    <div class="pagination">
+                        <button id="prevPage" class="btn btn-sm" disabled>Previous</button>
+                        <span id="pageInfo">Page 1</span>
+                        <button id="nextPage" class="btn btn-sm">Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW: TRENDS -->
+            <section id="view-trends" class="view-section">
+                <h2 class="section-title">Analytics Trends</h2>
+                
+                <div class="charts-grid">
+                    <div class="chart-card full-width">
+                        <h3>Volume Over Time</h3>
+                        <div class="chart-container">
+                            <canvas id="chartVolume"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-card half-width">
+                        <h3>Feedback Rates</h3>
+                        <div class="chart-container">
+                            <canvas id="chartFeedback"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-card half-width">
+                        <h3>Category Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="chartCategories"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW: SPEND -->
+            <section id="view-spend" class="view-section">
+                <h2 class="section-title">Financial & Usage</h2>
+                
+                <div class="spend-overview">
+                    <div class="spend-card primary">
+                        <div class="label">Total Spend</div>
+                        <div class="value" id="spend-total">$-.--</div>
+                        <div class="sub">Includes tokens + other expenses</div>
+                    </div>
+                    
+                    <div class="spend-card">
+                        <div class="label">Token Cost</div>
+                        <div class="value" id="spend-tokens">$-.--</div>
+                        <div class="sub">Input: $0.15/1M | Output: $0.60/1M</div>
+                    </div>
+
+                    <div class="spend-card">
+                        <div class="label">Avg Cost / Query</div>
+                        <div class="value" id="spend-avg">$-.--</div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h3>Token Breakdown</h3>
+                    </div>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Count</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tokenTableBody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
         </main>
-
-
     </div>
 
-    <script src="/static/admin/admin.js" defer></script>
+    <script src="admin.js"></script>
 </body>
-
 </html>
