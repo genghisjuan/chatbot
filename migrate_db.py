@@ -52,6 +52,18 @@ def migrate():
             conn.commit()
             print("Migration successful! Column 'rating' is now INTEGER.")
             
+            # 5. Check/Add message_id column
+            check_msg_id = text("SELECT 1 FROM information_schema.columns WHERE table_name = 'feedback_logs' AND column_name = 'message_id'")
+            result_col = conn.execute(check_msg_id)
+            if not result_col.fetchone():
+                print("Column 'message_id' missing. Adding it...")
+                conn.execute(text("ALTER TABLE feedback_logs ADD COLUMN message_id TEXT"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_feedback_logs_message_id ON feedback_logs (message_id)"))
+                conn.commit()
+                print("Added 'message_id' column.")
+            else:
+                print("Column 'message_id' already exists.")
+
     except Exception as e:
         print(f"Migration failed dict: {e}")
 
