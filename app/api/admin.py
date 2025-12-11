@@ -196,7 +196,7 @@ async def get_messages_trend(
             func.count(QueryLog.id).label('count')
         ).filter(QueryLog.timestamp >= start_dt_full, QueryLog.timestamp <= end_full).group_by('minute').all()
         
-        results = [{" date": log.minute, "count": log.count} for log in logs]
+        results = [{"date": log.minute, "count": log.count} for log in logs]
         return {"trend": results}
 
     if granularity == "hour":
