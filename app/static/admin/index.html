@@ -1,21 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Juna Admin Dashboard</title>
-    
+
     <!-- Fonts & Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    
+
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
     <!-- Styles -->
-    <link rel="stylesheet" href="admin.css">
+    <link rel="stylesheet" href="/static/admin/admin.css">
 </head>
+
 <body>
 
     <!-- Header -->
@@ -27,7 +30,7 @@
             </div>
             <span class="status-badge" id="systemStatus">Online</span>
         </div>
-        
+
         <div class="header-right">
             <!-- Global Date Filter -->
             <div class="date-filter-group">
@@ -38,7 +41,7 @@
                     <option value="year">This Year</option>
                     <option value="custom">Custom Range</option>
                 </select>
-                
+
                 <div id="customDateInputs" class="custom-dates" style="display: none;">
                     <input type="date" id="startDate" class="form-input">
                     <span class="separator">to</span>
@@ -50,7 +53,7 @@
             <button id="exportBtn" class="btn btn-outline">
                 <i class="fas fa-download"></i> Export CSV
             </button>
-            
+
             <button id="refreshBtn" class="btn btn-icon" title="Refresh Data">
                 <i class="fas fa-sync-alt"></i>
             </button>
@@ -59,7 +62,7 @@
 
     <!-- Main Layout -->
     <div class="app-container">
-        
+
         <!-- Sidebar Navigation -->
         <nav class="sidebar">
             <div class="nav-item active" data-view="overview" role="button" tabindex="0">
@@ -75,7 +78,7 @@
 
         <!-- Main Content -->
         <main class="content-area">
-            
+
             <!-- Loading Indicator -->
             <div id="loadingOverlay" class="loading-overlay" style="display: none;">
                 <div class="spinner"></div>
@@ -91,7 +94,7 @@
             <!-- VIEW: OVERVIEW -->
             <section id="view-overview" class="view-section active">
                 <h2 class="section-title">Performance Overview</h2>
-                
+
                 <!-- KPI Grid -->
                 <div class="kpi-grid">
                     <div class="kpi-card">
@@ -109,11 +112,11 @@
                     <div class="kpi-card">
                         <div class="kpi-label">Escalations</div>
                         <div class="kpi-subtext">
-                            <span id="kpi-phone-esc">-</span> <i class="fas fa-phone"></i> &nbsp;|&nbsp; 
+                            <span id="kpi-phone-esc">-</span> <i class="fas fa-phone"></i> &nbsp;|&nbsp;
                             <span id="kpi-email-esc">-</span> <i class="fas fa-envelope"></i>
                         </div>
                     </div>
-                    
+
                     <div class="kpi-card success-border">
                         <div class="kpi-label">Positive Feedback</div>
                         <div class="kpi-value text-success" id="kpi-pos-count">-</div>
@@ -135,9 +138,10 @@
                             <button class="tab-btn" data-rating="-1">Negative</button>
                         </div>
                     </div>
-                    
+
                     <div class="toolbar">
-                        <input type="text" id="feedbackSearch" placeholder="Search query..." class="form-input search-input">
+                        <input type="text" id="feedbackSearch" placeholder="Search query..."
+                            class="form-input search-input">
                     </div>
 
                     <div class="feedback-list" id="feedbackList">
@@ -155,7 +159,7 @@
             <!-- VIEW: TRENDS -->
             <section id="view-trends" class="view-section">
                 <h2 class="section-title">Analytics Trends</h2>
-                
+
                 <div class="charts-grid">
                     <div class="chart-card full-width">
                         <h3>Volume Over Time</h3>
@@ -163,14 +167,14 @@
                             <canvas id="chartVolume"></canvas>
                         </div>
                     </div>
-                    
+
                     <div class="chart-card half-width">
                         <h3>Feedback Rates</h3>
                         <div class="chart-container">
                             <canvas id="chartFeedback"></canvas>
                         </div>
                     </div>
-                    
+
                     <div class="chart-card half-width">
                         <h3>Category Distribution</h3>
                         <div class="chart-container">
@@ -183,14 +187,14 @@
             <!-- VIEW: SPEND -->
             <section id="view-spend" class="view-section">
                 <h2 class="section-title">Financial & Usage</h2>
-                
+
                 <div class="spend-overview">
                     <div class="spend-card primary">
                         <div class="label">Total Spend</div>
                         <div class="value" id="spend-total">$-.--</div>
                         <div class="sub">Includes tokens + other expenses</div>
                     </div>
-                    
+
                     <div class="spend-card">
                         <div class="label">Token Cost</div>
                         <div class="value" id="spend-tokens">$-.--</div>
@@ -224,6 +228,7 @@
         </main>
     </div>
 
-    <script src="admin.js"></script>
+    <script src="/static/admin/admin.js"></script>
 </body>
+
 </html>
