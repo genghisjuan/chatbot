@@ -56,6 +56,7 @@ class FeedbackLog(Base):
         user_query: The user's original question
         bot_response: The bot's response text
         rating: 'up' or 'down'
+        message_id: Unique ID of the bot message being rated
     """
     __tablename__ = 'feedback_logs'
 
@@ -63,7 +64,8 @@ class FeedbackLog(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     user_query = Column(String)
     bot_response = Column(String)
-    rating = Column(String)  # 'up' or 'down'
+    rating = Column(String)  # 'up', 'down', or 'none' (deleted)
+    message_id = Column(String, index=True, nullable=True) # key to prevent duplicates
 
 class ExpenseLog(Base):
     """
@@ -186,8 +188,27 @@ class AnalyticsService:
         ]
 
     def _init_db(self) -> None:
-        """Create database tables if they don't exist."""
+        """Create database tables if they don't exist and run migrations."""
         Base.metadata.create_all(bind=self.engine)
+        
+        # Simple migration checkpoint: Add exists message_id column if missing
+        # This is safe for SQLite which doesn't support 'IF NOT EXISTS' in add column easily everywhere,
+        # but we do a python check first.
+        try:
+            with self.engine.connect() as conn:
+                # Check if column exists
+                # This works for SQLite. For PG we might need different query if this fails.
+                # Simplest universal way: select one row and check keys
+                result = conn.execute(text("PRAGMA table_info(feedback_logs)"))
+                columns = [row[1] for row in result.fetchall()]
+                
+                if 'message_id' not in columns:
+                    logger.info("Migrating DB: Adding message_id to feedback_logs")
+                    conn.execute(text("ALTER TABLE feedback_logs ADD COLUMN message_id VARCHAR"))
+                    conn.commit()
+        except Exception as e:
+            # Might fail on non-sqlite or if permissions issues, but normally safe
+            logger.warning(f"Database migration check failed (might be expected on fresh db): {e}")
 
     def categorize_query(self, message: str) -> str:
         """
@@ -336,25 +357,50 @@ class AnalyticsService:
         finally:
             db.close()
 
-    def log_feedback(self, user_query: str, bot_response: str, rating: str) -> None:
+    def log_feedback(self, user_query: str, bot_response: str, rating: str, message_id: str = None) -> None:
         """
-        Log user feedback on a bot response to the database.
+        Log user feedback with upsert logic.
         
         Args:
             user_query: The user's original question
             bot_response: The bot's response text
-            rating: 'up' or 'down'
+            rating: 'up', 'down', or 'none' (to remove)
+            message_id: Unique ID of the message being rated
         """
         # Define internal sync save function
         def _save_feedback():
             db: Session = self.SessionLocal()
             try:
-                log_entry = FeedbackLog(
-                    user_query=user_query,
-                    bot_response=bot_response,
-                    rating=rating
-                )
-                db.add(log_entry)
+                # Upsert Logic: Check if exists
+                existing = None
+                if message_id:
+                    existing = db.query(FeedbackLog).filter(FeedbackLog.message_id == message_id).first()
+                
+                if existing:
+                    if rating == "none":
+                        # Toggle off -> Delete
+                        db.delete(existing)
+                        logger.info(f"Feedback removed: MsgID={message_id}")
+                    else:
+                        # Update existing
+                        existing.rating = rating
+                        existing.timestamp = datetime.datetime.utcnow()
+                        logger.info(f"Feedback updated: MsgID={message_id}, Rating={rating}")
+                
+                else:
+                    # Create new (only if not 'none')
+                    if rating != "none":
+                        log_entry = FeedbackLog(
+                            user_query=user_query,
+                            bot_response=bot_response,
+                            rating=rating,
+                            message_id=message_id
+                        )
+                        db.add(log_entry)
+                        logger.info(f"Feedback created: MsgID={message_id}, Rating={rating}")
+                
+                db.commit()
+                
                 db.commit()
             except Exception as e:
                 logger.error(f"Failed to save feedback log: {e}")

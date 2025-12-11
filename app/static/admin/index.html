@@ -30,13 +30,30 @@
         <main class="main">
             <header class="header">
                 <h1 id="viewTitle">Overview</h1>
-                <span class="date" id="currentDate"></span>
+
+                <!-- Global Time Filter -->
+                <div class="global-filter" style="display: flex; align-items: center; gap: 10px;">
+                    <select id="periodFilter" class="period-select">
+                        <option value="today">Today</option>
+                        <option value="last_7_days" selected>Last 7 Days</option>
+                        <option value="last_30_days">Last 30 Days</option>
+                        <option value="month">This Month</option>
+                        <option value="year">This Year</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                    <div id="customDateRange" class="date-range" style="display:none; align-items: center; gap: 5px;">
+                        <input type="date" id="startDate" class="date-input">
+                        <span class="date-separator">to</span>
+                        <input type="date" id="endDate" class="date-input">
+                        <button id="applyDateBtn" class="apply-btn">Apply</button>
+                    </div>
+                    <button id="exportBtn" class="export-btn"><i class="fas fa-download"></i></button>
+                </div>
             </header>
 
             <div class="content">
                 <!-- Overview -->
                 <div class="view active" id="overview">
-                    <!-- Compact Stats Grid -->
                     <!-- Compact Stats Grid -->
                     <div class="stats-grid">
                         <div class="stat-card">
@@ -80,66 +97,41 @@
 
                     <div class="detail-section">
                         <div class="detail-header">
-                            <div class="tab positive active" data-tab="positive" tabindex="0" role="button"><i
-                                    class="fas fa-thumbs-up"></i>
-                                Positive</div>
-                            <div class="tab negative" data-tab="negative" tabindex="0" role="button"><i
-                                    class="fas fa-thumbs-down"></i> Negative
-                            </div>
-                            <div class="filter-controls">
-                                <select id="periodFilter" class="period-select">
-                                    <option value="">All Time</option>
-                                    <option value="day">Today</option>
-                                    <option value="week">This Week</option>
-                                    <option value="month">This Month</option>
-                                    <option value="custom">Custom Range</option>
-                                </select>
-                                <div id="customDateRange" class="date-range" style="display:none;">
-                                    <input type="date" id="startDate" class="date-input">
-                                    <span class="date-separator">to</span>
-                                    <input type="date" id="endDate" class="date-input">
-                                    <button id="applyDateBtn" class="apply-btn">Apply</button>
+                            <!-- Tabs on the left -->
+                            <div class="tabs-container">
+                                <div class="tab positive active" data-tab="positive" tabindex="0" role="button">
+                                    <i class="fas fa-thumbs-up"></i> Positive
                                 </div>
-                                <button id="exportBtn" class="export-btn"><i class="fas fa-download"></i>
-                                    Export</button>
+                                <div class="tab negative" data-tab="negative" tabindex="0" role="button">
+                                    <i class="fas fa-thumbs-down"></i> Negative
+                                </div>
+                            </div>
+
+                            <!-- Pagination controls on the right (shows for active tab) -->
+                            <div id="feedbackPagination" class="pagination-controls-header" style="display: none;">
+                                <button class="pagination-btn prev-btn" onclick="changePageForActiveTab(-1)">
+                                    <i class="fas fa-chevron-left"></i>
+                                </button>
+                                <span class="page-info">Page 1 of 1</span>
+                                <button class="pagination-btn next-btn" onclick="changePageForActiveTab(1)">
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
                             </div>
                         </div>
+
                         <div class="detail-content">
                             <div class="tab-content active" id="positiveContent"></div>
                             <div class="tab-content" id="negativeContent"></div>
-                            <div style="text-align: center; margin-top: 15px;">
-                                <button id="loadMoreBtn" class="trend-btn" style="width: 200px;">Load More</button>
-                            </div>
                         </div>
                     </div>
                 </div>
+
 
                 <!-- Trends -->
                 <div class="view" id="trends">
                     <!-- Kept Existing Trends View -->
                     <div class="detail-section">
-                        <div class="detail-header" style="padding: 14px 18px; display: block;">
-                            <div
-                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                <div class="trend-controls"
-                                    style="margin-bottom: 0; display: flex; align-items: center; width: 100%; justify-content: flex-end;">
-                                    <button class="trend-btn active" onclick="updateTrend(1, this)">Today</button>
-                                    <button class="trend-btn" onclick="updateTrend(7, this)">Last Week</button>
-                                    <button class="trend-btn" onclick="updateTrend(30, this)">Last Month</button>
-                                    <button class="trend-btn" onclick="updateTrend(365, this)">Last Year</button>
-                                    <button class="trend-btn" onclick="updateTrend('custom', this)">Custom
-                                        Range</button>
-
-                                    <div id="trendCustomDateRange"
-                                        style="display: none; margin-left: 12px; align-items: center; gap: 8px;">
-                                        <input type="date" id="trendStartDate" class="date-input">
-                                        <span style="color: #6b7280; font-size: 0.9em;">to</span>
-                                        <input type="date" id="trendEndDate" class="date-input">
-                                        <button onclick="applyTrendCustomDate()" class="apply-btn">Apply</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <!-- Trend controls removed from here -->
                         <div class="detail-content">
                             <!-- Messages Chart -->
                             <h3 style="color: #cbd5e0; margin-bottom: 15px; margin-left: 5px;">

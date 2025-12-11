@@ -365,7 +365,8 @@ body {
 .feedback-detail-card {
     background: rgba(255, 255, 255, 0.03);
     border-radius: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    /* Reduced from 8px */
     overflow: hidden;
     border: 1px solid transparent;
     transition: all 0.2s;
@@ -380,7 +381,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 18px;
+    padding: 12px 18px;
+    /* Reduced from 14px */
     cursor: pointer;
     user-select: none;
 }
@@ -624,57 +626,94 @@ body {
     color: #9ca3af;
     margin-top: 2px;
     display: flex;
+    gap: 8px;
+    /* Added gap if flex is used */
+}
 
-    /* Loading Spinner */
-    .spinner-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(18, 18, 26, 0.7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 50;
-        border-radius: inherit;
-        backdrop-filter: blur(2px);
-        transition: opacity 0.2s;
-    }
+/* Loading Spinner */
+.spinner-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(18, 18, 26, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    border-radius: inherit;
+    backdrop-filter: blur(2px);
+    transition: opacity 0.2s;
+}
 
-    .spinner-overlay i {
-        font-size: 2em;
-        color: #667eea;
-    }
+.spinner-overlay i {
+    font-size: 2em;
+    color: #667eea;
+}
 
-    .loading {
-        pointer-events: none;
-        min-height: 100px;
-    }
+.loading {
+    pointer-events: none;
+    min-height: 100px;
+}
 
-    /* Loading Spinner */
-    .spinner-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(18, 18, 26, 0.7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 50;
-        border-radius: inherit;
-        backdrop-filter: blur(2px);
-        transition: opacity 0.2s;
-    }
+/* Feedback Header Layout (Tabs + Pagination) */
+.detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    /* Reduced from 10px */
+    border-bottom: 1px solid #1e1e2e;
+    background: #12121a;
+    min-height: 40px;
+    /* Reduced from 44px */
+}
 
-    .spinner-overlay i {
-        font-size: 2em;
-        color: #667eea;
-    }
+.tabs-container {
+    display: flex;
+    gap: 8px;
+}
 
-    .loading {
-        pointer-events: none;
-        min-height: 100px;
-    }
+/* Pagination Controls - Minimal Clean Design */
+.pagination-controls-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.8em;
+    color: #9ca3af;
+}
+
+.pagination-btn {
+    background: none !important;
+    border: none !important;
+    color: #667eea;
+    cursor: pointer;
+    padding: 4px 8px;
+    transition: all 0.2s;
+    font-size: 1em;
+    line-height: 1;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    color: #8b9aff;
+    transform: scale(1.1);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.2;
+    cursor: not-allowed;
+    color: #6b7280;
+}
+
+.pagination-btn i {
+    font-size: 0.9em;
+}
+
+.page-info {
+    color: #9ca3af;
+    font-size: 0.85em;
+    font-weight: 400;
+    white-space: nowrap;
+    user-select: none;
+}

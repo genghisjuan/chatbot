@@ -47,7 +47,7 @@ class ChatApp {
         if (this.conversationHistory.length > 0) {
             this.messagesDiv.innerHTML = '';
             this.conversationHistory.forEach(msg => {
-                this.addMessage(msg.content, msg.role === 'assistant' ? 'bot' : 'user', msg.role === 'assistant');
+                this.addMessage(msg.content, msg.role === 'assistant' ? 'bot' : 'user', msg.role === 'assistant', null, msg.id);
             });
         }
 
@@ -189,6 +189,7 @@ class ChatApp {
 
     clearConversation() {
         sessionStorage.removeItem('current_conversation_history');
+        sessionStorage.removeItem('message_ratings');
         this.conversationHistory = [];
     }
 
@@ -272,7 +273,9 @@ class ChatApp {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
-            const botContentDiv = this.addMessage('', 'bot');
+            const botMsgId = Date.now().toString();
+            // Pass the ID to addMessage so it's stored on the DOM element
+            const botContentDiv = this.addMessage('', 'bot', false, null, botMsgId);
             let botText = '';
 
             while (true) {
@@ -297,7 +300,15 @@ class ChatApp {
             }
 
             const cleanBotText = botText.replace(/<<SUGGESTIONS>>.*$/s, '').trim();
-            this.conversationHistory.push({ role: "assistant", content: cleanBotText });
+
+            // Fix for Feedback: Update wrapper dataset with final text so "First Rating" works
+            const wrapper = botContentDiv.closest('.message-wrapper');
+            if (wrapper) {
+                wrapper.dataset.botResponse = cleanBotText;
+                wrapper.dataset.userQuery = text; // Ensure user query is also captured
+            }
+
+            this.conversationHistory.push({ role: "assistant", content: cleanBotText, id: botMsgId });
             this.saveConversation();
 
             // Speak (Non-critical)
@@ -340,7 +351,7 @@ class ChatApp {
         }
     }
 
-    addMessage(text, sender, isMarkdown = false, imageFile = null) {
+    addMessage(text, sender, isMarkdown = false, imageFile = null, messageId = null) {
         const wrapper = document.createElement('div');
         wrapper.className = `message-wrapper ${sender}`;
 
@@ -392,7 +403,10 @@ class ChatApp {
             const feedbackDiv = document.createElement('div');
             feedbackDiv.className = 'feedback-buttons';
 
-            const msgId = Date.now().toString();
+            // Use provided messageId or generate new one
+            const msgId = messageId || Date.now().toString();
+            // Store msgId on wrapper for later reference
+            wrapper.dataset.messageId = msgId;
 
             const upBtn = document.createElement('button');
             upBtn.className = 'feedback-btn';
@@ -404,6 +418,14 @@ class ChatApp {
             downBtn.innerHTML = '<i class="fas fa-thumbs-down"></i>';
             downBtn.onclick = () => this.sendFeedback(msgId, 'down', downBtn, upBtn, wrapper);
 
+            // Restore previous rating state if it exists
+            const existingRating = this.getRating(msgId);
+            if (existingRating === 'up') {
+                upBtn.classList.add('active-up');
+            } else if (existingRating === 'down') {
+                downBtn.classList.add('active-down');
+            }
+
             feedbackDiv.appendChild(upBtn);
             feedbackDiv.appendChild(downBtn);
             actionsRow.appendChild(feedbackDiv);
@@ -412,6 +434,8 @@ class ChatApp {
 
         this.messagesDiv.appendChild(wrapper);
         this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
+
+        // Return both content div and the message ID used
         return textContentDiv;
     }
 
@@ -485,13 +509,35 @@ class ChatApp {
     }
 
     async sendFeedback(msgId, rating, btn, otherBtn, wrapper) {
-        btn.classList.add(rating === 'up' ? 'active-up' : 'active-down');
-        otherBtn.classList.remove('active-up', 'active-down');
+        // Toggle Logic
+        const isActive = btn.classList.contains('active-up') || btn.classList.contains('active-down');
+
+        let newRating = rating;
+
+        if (isActive) {
+            // Toggle Off
+            btn.classList.remove('active-up', 'active-down');
+            newRating = 'none'; // Backend will interpret this as delete
+
+            // Remove from storage
+            const ratings = this.loadRatings();
+            if (ratings[msgId]) {
+                delete ratings[msgId];
+                sessionStorage.setItem('message_ratings', JSON.stringify(ratings));
+            }
+        } else {
+            // Toggle On or Switch
+            btn.classList.add(rating === 'up' ? 'active-up' : 'active-down');
+            otherBtn.classList.remove('active-up', 'active-down');
+
+            // Save new rating
+            this.saveRating(msgId, rating);
+        }
 
         try {
             const payload = {
                 message_id: msgId,
-                rating: rating,
+                rating: newRating, // 'up', 'down', or 'none'
                 user_query: wrapper.dataset.userQuery || '',
                 bot_response: wrapper.dataset.botResponse || ''
             };
@@ -502,6 +548,32 @@ class ChatApp {
                 body: JSON.stringify(payload)
             });
         } catch (e) { console.error('Feedback failed', e); }
+    }
+
+    saveRating(msgId, rating) {
+        // Get existing ratings from sessionStorage
+        const ratings = this.loadRatings();
+        // Store or update the rating for this message
+        ratings[msgId] = rating;
+        // Save back to sessionStorage
+        sessionStorage.setItem('message_ratings', JSON.stringify(ratings));
+    }
+
+    loadRatings() {
+        // Load all stored ratings from sessionStorage
+        try {
+            const stored = sessionStorage.getItem('message_ratings');
+            return stored ? JSON.parse(stored) : {};
+        } catch (e) {
+            console.error('Failed to load ratings:', e);
+            return {};
+        }
+    }
+
+    getRating(msgId) {
+        // Get rating for a specific message
+        const ratings = this.loadRatings();
+        return ratings[msgId] || null;
     }
 
     async fetchTrendingTopics() {

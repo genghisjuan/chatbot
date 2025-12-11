@@ -127,7 +127,8 @@ async def feedback_endpoint(
             analytics_service.log_feedback(
                 user_query=feedback.user_query,
                 bot_response=feedback.bot_response,
-                rating=feedback.rating
+                rating=feedback.rating,
+                message_id=feedback.message_id
             )
         
         return {"status": "success"}
