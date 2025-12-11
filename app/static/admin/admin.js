@@ -6,29 +6,83 @@
  */
 
 // =============================================================================
-// CONSTANTS
+// CONSTANTS & STATE
 // =============================================================================
 
 const API_BASE = '/api/v1/admin';
-const DEFAULT_CHART_COLORS = {
+const CHART_COLORS = {
     primary: '#667eea',
     success: '#10b981',
     warning: '#f59e0b',
     danger: '#ef4444',
     purple: '#8b5cf6',
-    green: '#48bb78'
+    green: '#48bb78',
+    grid: '#2d3748'
 };
-const CHART_GRID_COLOR = '#2d3748';
-const MAX_QUERY_LENGTH_PREVIEW = 60;
+
+const paginationState = {
+    positive: { currentPage: 1, totalCount: 0, pageSize: 12 },
+    negative: { currentPage: 1, totalCount: 0, pageSize: 12 }
+};
 
 // =============================================================================
 // UTILITY FUNCTIONS
 // =============================================================================
 
 /**
- * Escape HTML to prevent XSS attacks.
- * @param {string} unsafe - Potentially unsafe string
- * @returns {string} HTML-escaped string
+ * Helper to fetch JSON data with error handling.
+ */
+async function fetchAPI(endpoint) {
+    const res = await fetch(endpoint);
+    if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    return res.json();
+}
+
+/**
+ * Format currency with appropriate precision.
+ */
+function formatCurrency(val) {
+    if (!val || val === 0) return '$0.00';
+    if (val < 0.0001) return '$' + val.toFixed(6);
+    if (val < 0.01) return '$' + val.toFixed(4);
+    return '$' + val.toFixed(2);
+}
+
+/**
+ * Format large numbers with commas.
+ */
+function formatNumber(val) {
+    return (val || 0).toLocaleString();
+}
+
+/**
+ * Show/Hide loading state for an element.
+ */
+function showLoading(element) {
+    if (element) {
+        element.classList.add('loading');
+        element.setAttribute('aria-busy', 'true');
+    }
+}
+
+function hideLoading(element) {
+    if (element) {
+        element.classList.remove('loading');
+        element.setAttribute('aria-busy', 'false');
+    }
+}
+
+/**
+ * Show error message to user (console + potential toast).
+ */
+function showError(message) {
+    console.error('User-facing error:', message);
+}
+
+/**
+ * Escape HTML to prevent XSS.
  */
 function escapeHtml(unsafe) {
     if (!unsafe) return '';
@@ -41,158 +95,67 @@ function escapeHtml(unsafe) {
 }
 
 /**
- * Format currency with appropriate precision.
- * @param {number} val - Numeric value
- * @returns {string} Formatted currency string
- */
-function formatCurrency(val) {
-    if (!val || val === 0) return '$0.00';
-    if (val < 0.0001) return '$' + val.toFixed(6);
-    if (val < 0.01) return '$' + val.toFixed(4);
-    return '$' + val.toFixed(2);
-}
-
-/**
- * Format large numbers with commas.
- * @param {number} val - Numeric value
- * @returns {string} Formatted number string
- */
-function formatNumber(val) {
-    return (val || 0).toLocaleString();
-}
-
-/**
- * Show loading state for an element.
- * @param {HTMLElement} element - Target element
- */
-function showLoading(element) {
-    if (!element) return;
-    element.classList.add('loading');
-    element.setAttribute('aria-busy', 'true');
-}
-
-/**
- * Hide loading state for an element.
- * @param {HTMLElement} element - Target element
- */
-function hideLoading(element) {
-    if (!element) return;
-    element.classList.remove('loading');
-    element.setAttribute('aria-busy', 'false');
-}
-
-/**
- * Show error message to user.
- * @param {string} message - Error message to display
- */
-function showError(message) {
-    console.error('User-facing error:', message);
-    // Could implement toast notification here
-}
-
-// =============================================================================
-// DATE PARSING FUNCTIONS
-// =============================================================================
-
-/**
- * Parse trend date string from backend into Date object.
- * Handles multiple formats: ISO, YYYY-MM-DD, YYYY-MM-DD HH:MM, YYYY-MM.
- * 
- * @param {string} dateStr - Date string from backend
- * @returns {Date|null} Parsed Date object or null if invalid
- */
-function parseTrendDate(dateStr) {
-    if (!dateStr) {
-        console.warn('parseTrendDate received invalid input:', dateStr);
-        return null;
-    }
-
-    dateStr = String(dateStr);
-
-    // Backend returns naive UTC timestamps - add 'Z' to parse as UTC
-    if (!dateStr.includes('T')) {
-        // Handle YYYY-MM format (month data)
-        if (dateStr.length === 7) return new Date(dateStr + '-01T00:00:00Z');
-        // Handle YYYY-MM-DD format (day data)
-        if (dateStr.length === 10) return new Date(dateStr + 'T00:00:00Z');
-        // Handle YYYY-MM-DD HH format (hour data)
-        if (dateStr.length === 13) return new Date(dateStr.replace(' ', 'T') + ':00:00Z');
-        // Handle YYYY-MM-DD HH:MM format (minute data)
-        if (dateStr.length === 16) return new Date(dateStr.replace(' ', 'T') + ':00Z');
-    }
-
-    // If already ISO format, append Z if not present
-    if (!dateStr.endsWith('Z')) dateStr += 'Z';
-    return new Date(dateStr);
-}
-
-/**
- * Format response text as markdown.
- * Requires marked.js library.
- * 
- * @param {string} text - Markdown text
- * @returns {string} Rendered HTML
+ * Format response text as markdown (using marked.js).
  */
 function formatResponse(text) {
     if (!text) return '';
-
-    // Check if marked library is available
     if (typeof marked === 'undefined' || !marked.parse) {
-        console.error('Marked library not loaded');
-        return escapeHtml(text); // Fallback to escaped text
+        return escapeHtml(text);
     }
-
     try {
         return marked.parse(text);
     } catch (e) {
-        console.error('Error parsing markdown:', e);
+        console.error('Markdown parse error:', e);
         return escapeHtml(text);
     }
 }
 
+/**
+ * Parse trend date helpers.
+ */
+function parseTrendDate(dateStr) {
+    if (!dateStr) return null;
+    dateStr = String(dateStr);
+
+    // Normalize to ISO format (append 'Z' if missing and not explicitly local)
+    if (!dateStr.includes('T')) {
+        if (dateStr.length === 10) dateStr += 'T00:00:00'; // YYYY-MM-DD
+        else if (dateStr.length === 13) dateStr = dateStr.replace(' ', 'T') + ':00:00'; // YYYY-MM-DD HH
+        else if (dateStr.length === 16) dateStr = dateStr.replace(' ', 'T') + ':00'; // YYYY-MM-DD HH:MM
+    }
+    if (!dateStr.endsWith('Z')) dateStr += 'Z'; // Treat as UTC
+    return new Date(dateStr);
+}
+
 // =============================================================================
-// DATA FETCHING FUNCTIONS
+// DATA FETCHING & RENDERING
 // =============================================================================
 
 /**
- * Load summary statistics for dashboard cards.
- * @param {Object} params - Filter parameters
+ * Load Summary Stats (Cards).
  */
 async function loadStats(params = {}) {
     try {
         const query = new URLSearchParams(params).toString();
-        const response = await fetch(`${API_BASE}/summary?${query}`);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        const data = await fetchAPI(`${API_BASE}/summary?${query}`);
 
-        const data = await response.json();
+        if (!data) throw new Error('Empty data');
 
-        // Validate data structure
-        if (!data) {
-            throw new Error('Invalid response data');
-        }
-
-        // Update DOM elements with null-safety
         const updates = [
             ['statDaily', data.messages_today],
             ['statWeekly', data.messages_week],
             ['statMonthly', data.messages_month],
-            ['statPositive', data.positive_feedback_score + '%'],
-            ['statNegative', data.negative_feedback_score + '%']
+            ['statPositive', data.positive_percentage != null ? data.positive_percentage + '%' : '--%'],
+            ['statNegative', data.negative_percentage != null ? data.negative_percentage + '%' : '--%']
         ];
 
-        updates.forEach(([id, value]) => {
+        updates.forEach(([id, val]) => {
             const el = document.getElementById(id);
-            if (el && value !== undefined) {
-                el.textContent = value;
-            }
+            if (el) el.textContent = val;
         });
-    } catch (e) {
-        console.error('Failed to load stats:', e);
-        showError('Failed to load statistics. Please refresh the page.');
 
-        // Mark visible error state
+    } catch (e) {
+        showError(`Failed to load stats: ${e.message}`);
         document.querySelectorAll('.stat-value').forEach(el => {
             if (el.textContent === '--') el.textContent = 'Error';
         });
@@ -200,181 +163,194 @@ async function loadStats(params = {}) {
 }
 
 /**
- * Load spend statistics for Spend page.
+ * Load Spend Stats.
  */
 async function loadSpend() {
     try {
-        const response = await fetch(`${API_BASE}/spend`);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const data = await fetchAPI(`${API_BASE}/spend`);
+
+        // Update Stats Cards
+        ['today', 'week', 'month', 'all_time'].forEach(key => {
+            const el = document.getElementById(`spend${key.charAt(0).toUpperCase() + key.slice(1).replace('_', '')}`);
+            if (el) el.textContent = formatCurrency(data[key]);
+        });
+
+        // Update Token Counts
+        const elQuery = document.getElementById('spendQueryCount');
+        if (elQuery) elQuery.textContent = formatNumber(data.all_time_queries);
+
+        ['input', 'output', 'embedding'].forEach(type => {
+            const tokens = data.all_time_tokens?.[type] || 0;
+            const el = document.getElementById(`spend${type.charAt(0).toUpperCase() + type.slice(1)}Tokens`);
+            if (el) el.textContent = formatNumber(tokens);
+        });
+
+        // Pricing Info
+        if (data.pricing) {
+            const elIn = document.getElementById('pricingInput');
+            const elOut = document.getElementById('pricingOutput');
+            if (elIn) elIn.textContent = data.pricing.input_per_1m;
+            if (elOut) elOut.textContent = data.pricing.output_per_1m;
         }
 
-        const data = await response.json();
-        console.log('Spend Data:', data);
-
-        // Validate data structure
-        if (!data || !data.today || !data.week || !data.month ||
-            !data.all_time || !data.pricing) {
-            throw new Error('Invalid spend data structure');
+        // Calculate Average
+        const elAvg = document.getElementById('spendAvg');
+        if (elAvg) {
+            const total = data.all_time || 0;
+            const count = data.all_time_queries || 1;
+            elAvg.textContent = formatCurrency(total / count);
         }
 
-        // Update summary cards
-        const summaryUpdates = [
-            ['spendToday', formatCurrency(data.today.cost)],
-            ['spendWeek', formatCurrency(data.week.cost)],
-            ['spendMonth', formatCurrency(data.month.cost)],
-            ['spendAllTime', formatCurrency(data.all_time.cost)],
-            ['spendAvg', formatCurrency(data.avg_cost_per_query)]
-        ];
-
-        summaryUpdates.forEach(([id, value]) => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = value;
-        });
-
-        // Update token breakdown
-        const tokenUpdates = [
-            ['spendQueryCount', formatNumber(data.all_time.query_count)],
-            ['spendInputTokens', formatNumber(data.all_time.input_tokens)],
-            ['spendOutputTokens', formatNumber(data.all_time.output_tokens)],
-            ['spendEmbeddingTokens', formatNumber(data.all_time.embedding_tokens)]
-        ];
-
-        tokenUpdates.forEach(([id, value]) => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = value;
-        });
-
-        // Update pricing info
-        const pricingUpdates = [
-            ['pricingInput', data.pricing.input_per_1m],
-            ['pricingOutput', data.pricing.output_per_1m]
-        ];
-
-        pricingUpdates.forEach(([id, value]) => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = value;
-        });
     } catch (e) {
-        console.error('Error loading spend:', e);
-        showError('Failed to load spend statistics.');
+        showError(`Failed to load spend: ${e.message}`);
     }
 }
 
+// =============================================================================
+// FEEDBACK & PAGINATION LOGIC
+// =============================================================================
+
 /**
- * Load top categories chart.
+ * Load both feedback tabs (resetting to page 1).
  */
-async function loadCategories() {
-    try {
-        const response = await fetch(`${API_BASE}/top-categories?days=30&limit=5`);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
+async function loadFeedback(params = {}) {
+    // Reset pagination
+    paginationState.positive.currentPage = 1;
+    paginationState.negative.currentPage = 1;
 
-        const data = await response.json();
+    // Load both tabs parallel
+    await Promise.all([
+        loadFeedbackTab('positive', params),
+        loadFeedbackTab('negative', params)
+    ]);
 
-        const canvasEl = document.getElementById('categoriesChart');
-        if (!canvasEl) {
-            console.warn('Canvas element "categoriesChart" not found');
-            return;
-        }
-
-        const ctx = canvasEl.getContext('2d');
-
-        // Destroy existing chart to prevent memory leaks
-        if (window.myCategoriesChart) {
-            window.myCategoriesChart.destroy();
-            window.myCategoriesChart = null;
-        }
-
-        window.myCategoriesChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: data.categories.map(c => c.category),
-                datasets: [{
-                    data: data.categories.map(c => c.count),
-                    backgroundColor: Object.values(DEFAULT_CHART_COLORS).slice(0, 5),
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: { color: '#9ca3af', boxWidth: 10 }
-                    }
-                },
-                cutout: '70%'
-            }
-        });
-    } catch (e) {
-        console.error('Error loading categories:', e);
-        showError('Failed to load category chart.');
-    }
+    // Update controls
+    updatePaginationControls('positive');
+    updatePaginationControls('negative');
 }
 
 /**
- * Render feedback cards in a container.
- * 
- * @param {Array} feedbackList - Array of feedback items
- * @param {string} containerId - ID of container element
+ * Load specific feedback tab.
  */
-function renderFeedbackCards(feedbackList, containerId) {
+async function loadFeedbackTab(sentiment, params = {}) {
+    const rating = sentiment === 'positive' ? 'up' : 'down';
+    const containerId = `${sentiment}Content`;
+    const state = paginationState[sentiment];
+
     const container = document.getElementById(containerId);
-    if (!container) {
-        console.warn(`Container "${containerId}" not found`);
+    if (!container) return;
+
+    try {
+        const query = new URLSearchParams(params);
+        query.set('rating', rating);
+        query.set('page', state.currentPage);
+        query.set('page_size', state.pageSize);
+
+        const data = await fetchAPI(`${API_BASE}/feedback?${query.toString()}`);
+
+        state.totalCount = data.totalCount || 0;
+        renderFeedbackCards(data.items || [], containerId);
+
+    } catch (e) {
+        console.error(`Error loading ${sentiment}:`, e);
+        showError(`Failed to load ${sentiment}: ${e.message}`);
+        container.innerHTML = `<div class="empty-state">Unable to load feedback. Server reported: ${e.message}</div>`;
+    }
+}
+
+/**
+ * Change page for the given tab.
+ */
+async function changePage(sentiment, direction) {
+    const state = paginationState[sentiment];
+    const maxPage = Math.ceil(state.totalCount / state.pageSize);
+    const newPage = state.currentPage + direction;
+
+    if (newPage < 1 || newPage > maxPage) return;
+
+    state.currentPage = newPage;
+
+    // Re-apply current global filters
+    const params = getGlobalFilterParams();
+    await loadFeedbackTab(sentiment, params);
+    updatePaginationControls(sentiment);
+}
+
+/**
+ * Determine active tab and change page (Warning: used by HTML onclick).
+ */
+function changePageForActiveTab(direction) {
+    const activeTab = document.querySelector('.tab.active');
+    if (!activeTab) return;
+    changePage(activeTab.dataset.tab, direction);
+}
+
+/**
+ * Update logic for pagination buttons visibility.
+ */
+function updatePaginationControls(sentiment) {
+    const activeTab = document.querySelector('.tab.active');
+    if (!activeTab || activeTab.dataset.tab !== sentiment) return; // Only update if visible
+
+    const state = paginationState[sentiment];
+    const totalPages = Math.ceil(state.totalCount / state.pageSize);
+    const controls = document.getElementById('feedbackPagination');
+
+    if (!controls) return;
+
+    if (state.totalCount <= state.pageSize) {
+        controls.style.display = 'none';
         return;
     }
 
+    controls.style.display = 'flex';
+
+    const prevBtn = controls.querySelector('.prev-btn');
+    const nextBtn = controls.querySelector('.next-btn');
+    const pageInfo = controls.querySelector('.page-info');
+
+    if (prevBtn) prevBtn.disabled = state.currentPage === 1;
+    if (nextBtn) nextBtn.disabled = state.currentPage >= totalPages;
+    if (pageInfo) pageInfo.textContent = `Page ${state.currentPage} of ${totalPages}`;
+}
+
+/**
+ * Render list of feedback cards.
+ */
+function renderFeedbackCards(items, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
     container.innerHTML = '';
 
-    if (!feedbackList || feedbackList.length === 0) {
+    if (!items.length) {
         container.innerHTML = '<div class="empty-state">No feedback found for this period.</div>';
         return;
     }
 
-    feedbackList.forEach(item => {
-        // Validate item structure
-        if (!item || !item.timestamp || !item.user_query) {
-            console.warn('Invalid feedback item:', item);
-            return; // Skip this item
-        }
-
-        // Parse and format timestamp
-        const date = escapeHtml(new Date(item.timestamp).toLocaleString());
+    items.forEach(item => {
         const card = document.createElement('div');
         card.className = 'feedback-detail-card';
 
-        // Truncated preview
-        const queryPreview = escapeHtml(
-            item.user_query.length > MAX_QUERY_LENGTH_PREVIEW
-                ? item.user_query.substring(0, MAX_QUERY_LENGTH_PREVIEW) + '...'
-                : item.user_query
-        );
-
-        // Build rating indicator HTML
-        let ratingHtml = '';
-        if (item.rating === 'up') {
-            ratingHtml = '<span class="rating-indicator" style="color: #10b981; margin-left: 8px; font-size: 16px;" title="Positive feedback"><i class="fas fa-thumbs-up"></i></span>';
-        } else if (item.rating === 'down') {
-            ratingHtml = '<span class="rating-indicator" style="color: #ef4444; margin-left: 8px; font-size: 16px;" title="Negative feedback"><i class="fas fa-thumbs-down"></i></span>';
+        // Parse date
+        let dateStr = 'Unknown Date';
+        if (item.timestamp) {
+            dateStr = new Date(item.timestamp).toLocaleString();
         }
 
         card.innerHTML = `
             <div class="feedback-header">
-                <div class="feedback-meta">
-                    <span class="feedback-time">${date}</span>${ratingHtml}
+                <div>
+                    <span class="feedback-icon ${item.rating === 'up' ? 'positive' : 'negative'}">
+                        <i class="fas fa-thumbs-${item.rating === 'up' ? 'up' : 'down'}"></i>
+                    </span>
+                    <span class="feedback-date">${dateStr}</span>
                 </div>
-                <div class="feedback-query-preview">${queryPreview}</div>
-                <i class="fas fa-chevron-down feedback-expand-icon"></i>
+                <i class="fas fa-chevron-down expand-icon"></i>
             </div>
-            <div class="feedback-content">
+            <div class="feedback-body">
                 <div class="feedback-section-title">User Query</div>
-                <div class="feedback-full-query">
-                    <p>${escapeHtml(item.user_query)}</p>
-                </div>
+                <div class="feedback-user-query">${escapeHtml(item.user_query)}</div>
                 
                 <div class="feedback-section-title">AI Response</div>
                 <div class="feedback-bot-response">
@@ -383,278 +359,70 @@ function renderFeedbackCards(feedbackList, containerId) {
             </div>
         `;
 
-        // Add click handler for expand/collapse
-        const header = card.querySelector('.feedback-header');
-        if (header) {
-            header.addEventListener('click', function () {
-                this.parentElement.classList.toggle('expanded');
-            });
-        }
+        card.querySelector('.feedback-header').addEventListener('click', function () {
+            this.parentElement.classList.toggle('expanded');
+        });
 
         container.appendChild(card);
     });
 }
 
 // =============================================================================
-// PAGINATION STATE (Per-tab)
+// TREND CHARTS
 // =============================================================================
 
-const paginationState = {
-    positive: {
-        currentPage: 1,
-        totalCount: 0,
-        pageSize: 12
-    },
-    negative: {
-        currentPage: 1,
-        totalCount: 0,
-        pageSize: 12
-    }
-};
-
-/**
- * Load feedback data with filters and pagination.
- * Loads both Positive and Negative tabs separately with their own pagination.
- * @param {Object} params - Filter parameters
- */
-async function loadFeedback(params = {}) {
-    // Reset both tabs to page 1 when filters change
-    paginationState.positive.currentPage = 1;
-    paginationState.negative.currentPage = 1;
-
-    await loadFeedbackTab('positive', params);
-    await loadFeedbackTab('negative', params);
-
-    // Update pagination controls visibility for both tabs
-    updatePaginationControls('positive');
-    updatePaginationControls('negative');
-}
-
-/**
- * Load feedback for a specific tab (positive or negative).
- * @param {string} sentiment - 'positive' or 'negative'
- * @param {Object} params - Filter parameters
- */
-async function loadFeedbackTab(sentiment, params = {}) {
-    const rating = sentiment === 'positive' ? 'up' : 'down';
-    const containerId = sentiment === 'positive' ? 'positiveContent' : 'negativeContent';
-    const state = paginationState[sentiment];
-
+async function loadTrend(days = 7, startDate = null, endDate = null) {
     try {
-        const queryParams = new URLSearchParams(params);
-        queryParams.set('rating', rating);
-        queryParams.set('page', state.currentPage);
-        queryParams.set('page_size', state.pageSize);
+        // Granularity Logic
+        let granularity = 'day';
+        if (days === 1) granularity = 'hour';
+        if (days === 365) granularity = 'month';
+        if (days === 'custom' && startDate === endDate) granularity = 'hour';
 
-        const response = await fetch(`${API_BASE}/feedback?${queryParams.toString()}`);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Auto-set today date if days=1
+        if (days === 1 && !startDate) {
+            const today = new Date().toISOString().split('T')[0];
+            startDate = endDate = today;
         }
 
-        const data = await response.json();
+        const offset = -new Date().getTimezoneOffset();
+        const params = new URLSearchParams({
+            days: days === 'custom' ? 0 : days,
+            granularity: granularity,
+            timezone_offset: offset
+        });
 
-        // Update pagination state
-        state.totalCount = data.totalCount || 0;
-
-        // Render feedback cards
-        renderFeedbackCards(data.items || [], containerId);
-
-    } catch (e) {
-        console.error(`Error loading ${sentiment} feedback:`, e);
-        showError(`Failed to load ${sentiment} feedback.`);
-        document.getElementById(containerId).innerHTML = `<div class="empty-state">Failed to load ${sentiment} feedback.</div>`;
-    }
-}
-
-/**
- * Change page for a specific tab.
- * @param {string} sentiment - 'positive' or 'negative'
- * @param {number} direction - 1 for next, -1 for previous
- */
-async function changePage(sentiment, direction) {
-    const state = paginationState[sentiment];
-    const newPage = state.currentPage + direction;
-    const maxPage = Math.ceil(state.totalCount / state.pageSize);
-
-    // Validate page bounds
-    if (newPage < 1 || newPage > maxPage) {
-        return;
-    }
-
-    state.currentPage = newPage;
-
-    // Get current filter params from global filter
-    const periodEl = document.getElementById('periodFilter');
-    const period = periodEl.value;
-    const params = {
-        period: period,
-        timezone_offset: -new Date().getTimezoneOffset()
-    };
-
-    if (period === 'custom') {
-        const start = document.getElementById('startDate').value;
-        const end = document.getElementById('endDate').value;
-        if (start && end) {
-            params.start_date = start;
-            params.end_date = end;
+        if (startDate && endDate) {
+            params.set('start_date', startDate);
+            params.set('end_date', endDate);
         }
-    }
 
-    // Load data for this tab only
-    await loadFeedbackTab(sentiment, params);
-
-    // Update pagination controls
-    updatePaginationControls(sentiment);
-}
-
-/**
- * Update pagination controls visibility and state for a tab.
- * Shows controls only if totalCount > 12.
- * @param {string} sentiment - 'positive' or 'negative'
- */
-function updatePaginationControls(sentiment) {
-    const state = paginationState[sentiment];
-    const totalPages = Math.ceil(state.totalCount / state.pageSize);
-
-    // Get the unified pagination controls in header
-    const controlsEl = document.getElementById('feedbackPagination');
-
-    if (!controlsEl) {
-        console.warn('Pagination controls not found: feedbackPagination');
-        return;
-    }
-
-    // Check if this tab is currently active
-    const activeTab = document.querySelector('.tab.active');
-    const isActiveTab = activeTab && activeTab.dataset.tab === sentiment;
-
-    // Only update controls if this is the active tab
-    if (!isActiveTab) {
-        return;
-    }
-
-    // Show controls only if more than 1 page
-    if (totalPages <= 1) {
-        controlsEl.style.display = 'none';
-        return;
-    }
-
-    controlsEl.style.display = 'flex';
-
-    // Update button states
-    const prevBtn = controlsEl.querySelector('.prev-btn');
-    const nextBtn = controlsEl.querySelector('.next-btn');
-    const pageInfo = controlsEl.querySelector('.page-info');
-
-    if (prevBtn) {
-        prevBtn.disabled = state.currentPage === 1;
-    }
-
-    if (nextBtn) {
-        nextBtn.disabled = state.currentPage >= totalPages;
-    }
-
-    if (pageInfo) {
-        pageInfo.textContent = `Page ${state.currentPage} of ${totalPages}`;
-    }
-}
-
-/**
- * Change page for the currently active tab.
- * Called from the unified pagination controls in the header.
- * @param {number} direction - 1 for next, -1 for previous
- */
-async function changePageForActiveTab(direction) {
-    // Determine which tab is active
-    const activeTab = document.querySelector('.tab.active');
-    if (!activeTab) return;
-
-    const sentiment = activeTab.dataset.tab;
-
-    // Use the existing changePage logic
-    await changePage(sentiment, direction);
-}
-
-/**
- * Load trend charts (messages + satisfaction).
- * @param {Object} params - Filter parameters
- */
-async function loadTrend(params = {}) {
-    try {
-        // Prepare Query
-        const query = new URLSearchParams(params).toString();
-
-        console.log('Fetching trend data with:', query);
-        const [msgRes, fbRes] = await Promise.all([
-            fetch(`${API_BASE}/messages-trend?${query}`),
-            fetch(`${API_BASE}/feedback-trend?${query}`)
+        const [msgData, fbData] = await Promise.all([
+            fetchAPI(`${API_BASE}/messages-trend?${params}`),
+            fetchAPI(`${API_BASE}/feedback-trend?${params}`)
         ]);
 
-        if (!msgRes.ok || !fbRes.ok) {
-            throw new Error('Failed to fetch trend data');
-        }
-
-        const dataMsg = await msgRes.json();
-        const dataFb = await fbRes.json();
-
-        // Validate data structure
-        if (!dataMsg || !dataMsg.trend || !Array.isArray(dataMsg.trend)) {
-            console.error('Invalid message trend data structure');
-            return;
-        }
-        if (!dataFb || !dataFb.trend || !Array.isArray(dataFb.trend)) {
-            console.error('Invalid feedback trend data structure');
-            return;
-        }
-
-        // Render Message Chart
-        renderMessageChart(dataMsg.trend, params.period);
-
-        // Render Satisfaction Chart
-        renderSatisfactionChart(dataFb.trend, params.period);
+        renderTrendChart(msgData.trend, granularity);
+        renderSatisfactionChart(fbData, granularity, days === 1);
+        updateTrendTotals(msgData.trend, fbData, days === 1);
 
     } catch (e) {
-        console.error('Trend Error:', e);
-        showError('Failed to load trend data.');
+        showError(`Trend error: ${e.message}`);
+        ['noTrendData', 'trendError', 'feedbackError'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'block';
+        });
     }
 }
 
-/**
- * Helper to render Message Chart
- */
-function renderMessageChart(trendData, period) {
-    const ctxEl = document.getElementById('trendChart');
-    const noDataEl = document.getElementById('noTrendData');
+function renderTrendChart(trendData, granularity) {
+    const ctx = document.getElementById('trendChart')?.getContext('2d');
+    if (!ctx) return;
 
-    if (!ctxEl) return;
+    if (window.myTrendChart) window.myTrendChart.destroy();
 
-    if (window.myTrendChart) {
-        window.myTrendChart.destroy();
-        window.myTrendChart = null;
-    }
-
-    const ctx = ctxEl.getContext('2d');
-    if (!ctx) {
-        console.error('Failed to get 2D context for trendChart');
-        return;
-    }
-
-    // Check for no data
-    if (!trendData || trendData.length === 0 || trendData.every(t => t.count === 0)) {
-        if (noDataEl) noDataEl.style.display = 'block';
-        return; // Don't render chart if no data
-    } else {
-        if (noDataEl) noDataEl.style.display = 'none';
-    }
-
-    const labels = trendData.map(t => {
-        const d = parseTrendDate(t.date);
-        if (!d) return '(Invalid Date)';
-        if (period === 'today' || period === 'custom') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        return d.toLocaleDateString();
-    });
-
-    const data = trendData.map(t => t.count !== undefined ? t.count : 0);
+    const labels = trendData.map(t => formatTrendLabel(t.date, granularity));
+    const data = trendData.map(t => t.count);
 
     window.myTrendChart = new Chart(ctx, {
         type: 'bar',
@@ -663,8 +431,9 @@ function renderMessageChart(trendData, period) {
             datasets: [{
                 label: 'Messages',
                 data: data,
-                backgroundColor: DEFAULT_CHART_COLORS.primary,
-                borderRadius: 4
+                backgroundColor: CHART_COLORS.primary,
+                borderRadius: 4,
+                barPercentage: 0.6
             }]
         },
         options: {
@@ -672,50 +441,34 @@ function renderMessageChart(trendData, period) {
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                x: {
-                    type: 'category',
-                    grid: { display: false },
-                    ticks: { color: '#9ca3af' }
-                },
-                y: {
-                    beginAtZero: true,
-                    grid: { color: CHART_GRID_COLOR },
-                    ticks: { color: '#9ca3af' }
-                }
+                y: { beginAtZero: true, grid: { color: CHART_COLORS.grid } },
+                x: { display: true, grid: { display: false } }
             }
         }
     });
+
+    const noData = document.getElementById('noTrendData');
+    if (noData) noData.style.display = data.some(v => v > 0) ? 'none' : 'block';
 }
 
-/**
- * Helper to render Satisfaction Chart
- */
-function renderSatisfactionChart(trendData, period) {
-    const ctxEl = document.getElementById('feedbackChart');
-    if (!ctxEl) return;
+function renderSatisfactionChart(fbData, granularity, showRealtime) {
+    const ctx = document.getElementById('feedbackChart')?.getContext('2d');
+    if (!ctx) return;
 
-    if (window.myFeedbackChart) {
-        window.myFeedbackChart.destroy();
-        window.myFeedbackChart = null;
-    }
+    if (window.myFeedbackChart) window.myFeedbackChart.destroy();
 
-    const ctx = ctxEl.getContext('2d');
-    if (!ctx) {
-        console.error('Failed to get 2D context for feedbackChart');
-        return;
-    }
+    const trend = fbData.trend || [];
+    let cumulativeUp = fbData.baseline_up || 0;
+    let cumulativeTotal = cumulativeUp + (fbData.baseline_down || 0);
 
-    // Calculate Satisfaction %
-    const dataset = trendData.map(t => {
-        const total = t.up + t.down;
-        return total > 0 ? ((t.up / total) * 100).toFixed(1) : 0;
-    });
+    const labels = [];
+    const points = [];
 
-    const labels = trendData.map(t => {
-        const d = parseTrendDate(t.date);
-        if (!d) return '(Invalid Date)';
-        if (period === 'today' || period === 'custom') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        return d.toLocaleDateString();
+    trend.forEach(t => {
+        cumulativeUp += t.up;
+        cumulativeTotal += (t.up + t.down);
+        labels.push(formatTrendLabel(t.date, granularity));
+        points.push(cumulativeTotal > 0 ? ((cumulativeUp / cumulativeTotal) * 100).toFixed(1) : 0);
     });
 
     window.myFeedbackChart = new Chart(ctx, {
@@ -724,14 +477,11 @@ function renderSatisfactionChart(trendData, period) {
             labels: labels,
             datasets: [{
                 label: 'Satisfaction %',
-                data: dataset,
-                borderColor: DEFAULT_CHART_COLORS.green,
+                data: points,
+                borderColor: CHART_COLORS.green,
                 backgroundColor: 'rgba(72, 187, 120, 0.1)',
-                fill: true,
-                tension: 0,
-                stepped: true,
-                borderWidth: 2,
-                pointRadius: 2
+                tension: 0.1,
+                fill: true
             }]
         },
         options: {
@@ -739,60 +489,58 @@ function renderSatisfactionChart(trendData, period) {
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 100,
-                    grid: { color: CHART_GRID_COLOR },
-                    ticks: { callback: v => v + '%', color: '#9ca3af' }
-                },
-                x: {
-                    type: 'category',
-                    grid: { display: false },
-                    ticks: { color: '#9ca3af' }
-                }
+                y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' }, grid: { color: CHART_COLORS.grid } },
+                x: { display: true, grid: { display: false } }
             }
         }
     });
 }
 
-/**
- * Apply the currently selected global filters.
- */
-function applyGlobalFilter() {
-    const periodEl = document.getElementById('periodFilter');
-    const period = periodEl.value;
-    const params = {
-        period: period,
-        timezone_offset: -new Date().getTimezoneOffset()
-    };
+function updateTrendTotals(msgTrend, fbData, isToday) {
+    const elMsg = document.getElementById('trendTotalMsg');
+    const elSat = document.getElementById('trendTotalSat');
+    if (!elMsg || !elSat) return;
 
-    const customRange = document.getElementById('customDateRange');
-
-    if (period === 'custom') {
-        if (customRange) customRange.style.display = 'flex';
-        const start = document.getElementById('startDate').value;
-        const end = document.getElementById('endDate').value;
-        if (start && end) {
-            params.start_date = start;
-            params.end_date = end;
-        } else {
-            // If custom is selected but dates are not, don't load data yet.
-            // The user needs to select dates and click apply.
-            return;
-        }
-    } else {
-        if (customRange) customRange.style.display = 'none';
-        // Ensure custom date params are not sent if not 'custom' period
-        delete params.start_date;
-        delete params.end_date;
+    if (!isToday) {
+        elMsg.textContent = '';
+        elSat.textContent = '';
+        return;
     }
 
-    console.log('Applying Global Filter:', params);
-    loadStats(params);
-    loadFeedback(params);
-    loadTrend(params);
+    const totalMsg = msgTrend.reduce((sum, t) => sum + t.count, 0);
+
+    // Total Sat Calculation
+    const totalUp = (fbData.baseline_up || 0) + (fbData.trend || []).reduce((s, t) => s + t.up, 0);
+    const totalDown = (fbData.baseline_down || 0) + (fbData.trend || []).reduce((s, t) => s + t.down, 0);
+    const total = totalUp + totalDown;
+    const sat = total > 0 ? ((totalUp / total) * 100).toFixed(1) : 0;
+
+    elMsg.textContent = `(${totalMsg})`;
+    elSat.textContent = `(${sat}%)`;
 }
 
+function formatTrendLabel(dateStr, granularity) {
+    const d = parseTrendDate(dateStr);
+    if (!d) return '';
+
+    if (granularity === 'hour') return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (granularity === 'month') return d.toLocaleDateString('en-US', { month: 'short' });
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function getGlobalFilterParams() {
+    const period = document.getElementById('periodFilter')?.value;
+    const params = { timezone_offset: -new Date().getTimezoneOffset() };
+
+    if (period === 'custom') {
+        params.start_date = document.getElementById('startDate')?.value;
+        params.end_date = document.getElementById('endDate')?.value;
+        params.period = 'custom';
+    } else {
+        params.period = period;
+    }
+    return params;
+}
 
 // =============================================================================
 // INITIALIZATION
@@ -800,123 +548,82 @@ function applyGlobalFilter() {
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // Global Filter Events
-    const periodSelect = document.getElementById('periodFilter');
-    if (periodSelect) {
-        periodSelect.addEventListener('change', applyGlobalFilter);
-    }
+    // 1. Navigation (Tabs)
+    const navItems = document.querySelectorAll('.nav-item');
+    const sections = ['overview', 'trends', 'spend'];
 
-    const applyBtn = document.getElementById('applyDateBtn');
-    if (applyBtn) {
-        applyBtn.addEventListener('click', applyGlobalFilter);
-    }
-
-    // Navigation Logic
-    document.querySelectorAll('.nav-item').forEach(item => {
+    navItems.forEach(item => {
         item.addEventListener('click', () => {
-            const viewId = item.dataset.view;
-            if (!viewId) {
-                console.warn('Nav item missing data-view attribute');
-                return;
-            }
+            const view = item.dataset.view;
+            if (!view) return;
 
-            // Update Sidebar
-            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            // UI Updates
+            navItems.forEach(n => n.classList.remove('active'));
             item.classList.add('active');
 
-            // Update View
-            const viewEl = document.getElementById(viewId);
-            if (viewEl) {
-                document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-                viewEl.classList.add('active');
-            }
+            sections.forEach(s => {
+                const el = document.getElementById(s);
+                if (el) el.classList.toggle('active', s === view);
+            });
 
-            // Update Title
-            const titles = {
-                'overview': 'Overview',
-                'trends': 'Trends',
-                'spend': 'Spend'
-            };
-            const viewTitleEl = document.getElementById('viewTitle');
-            if (viewTitleEl) {
-                viewTitleEl.textContent = titles[viewId] || 'Analytics';
-            }
+            document.getElementById('viewTitle').textContent = item.textContent.trim();
 
-            // Trigger Load (only for views that don't use global filter)
-            if (viewId === 'spend') loadSpend();
-            // Other views (overview, trends) are handled by applyGlobalFilter
+            // Data Triggers
+            if (view === 'trends') loadTrend(1);
+            if (view === 'spend') loadSpend();
         });
     });
 
-    // Tab Logic (for feedback section)
-    document.querySelectorAll('.tab').forEach(tab => {
+    // 2. Feedback Tabs (Positive/Negative)
+    const fbTabs = document.querySelectorAll('.tab');
+    fbTabs.forEach(tab => {
         tab.addEventListener('click', () => {
-            const tabId = tab.dataset.tab;
-            if (!tabId) {
-                console.warn('Tab missing data-tab attribute');
-                return;
-            }
-
-            // Update Tabs
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            fbTabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
 
-            // Update Content
-            const tabContentEl = document.getElementById(tabId + 'Content');
-            if (tabContentEl) {
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                tabContentEl.classList.add('active');
-            }
+            const sentiment = tab.dataset.tab;
+            ['positiveContent', 'negativeContent'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.toggle('active', id.startsWith(sentiment));
+            });
 
-            // Update pagination controls for the newly active tab
-            updatePaginationControls(tabId);
+            updatePaginationControls(sentiment);
         });
     });
-    // Display current date
-    const currentDateEl = document.getElementById('currentDate');
-    if (currentDateEl) {
-        currentDateEl.textContent = new Date().toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
+
+    // 3. Global Time Filter
+    const filter = document.getElementById('periodFilter');
+    if (filter) {
+        filter.addEventListener('change', (e) => {
+            const isCustom = e.target.value === 'custom';
+            const picker = document.getElementById('customDateRange');
+            if (picker) picker.style.display = isCustom ? 'flex' : 'none';
+            if (!isCustom) refreshAll();
         });
     }
 
-    // Export button logic
-    const exportBtnEl = document.getElementById('exportBtn');
-    if (exportBtnEl) {
-        exportBtnEl.addEventListener('click', () => {
-            const periodEl = document.getElementById('periodFilter');
-            const period = periodEl.value;
-            let url = `${API_BASE}/feedback/export`;
+    document.getElementById('applyDateBtn')?.addEventListener('click', refreshAll);
 
-            // Append filters
-            const params = new URLSearchParams();
-            if (period === 'custom') {
-                const start = document.getElementById('startDate').value;
-                const end = document.getElementById('endDate').value;
-                if (start && end) {
-                    params.append('start_date', start);
-                    params.append('end_date', end);
-                } else {
-                    showError("Please select a date range to export.");
-                    return;
-                }
-            } else {
-                params.append('period', period);
-            }
-
-            // Add timezone offset
-            params.append('timezone_offset', -new Date().getTimezoneOffset());
-
-            window.location.href = `${url}?${params.toString()}`;
-        });
-    }
-
+    // 4. Export
+    document.getElementById('exportBtn')?.addEventListener('click', () => {
+        const params = getGlobalFilterParams();
+        const query = new URLSearchParams(params).toString();
+        window.location.href = `${API_BASE}/feedback/export?${query}`;
+    });
 
     // Initial Load
-    applyGlobalFilter();
+    refreshAll();
 
-    console.log('Admin dashboard initialized');
+    // Helper to refresh everything
+    function refreshAll() {
+        const params = getGlobalFilterParams();
+        loadStats(params);
+        loadFeedback(params);
+        loadTrend(1);
+    }
+
+    console.log('Admin JS Loaded & Cleaned');
 });
+
+// Expose checks for inline HTML handlers
+window.changePageForActiveTab = changePageForActiveTab;
