@@ -20,36 +20,40 @@ def migrate():
     print(f"Connecting to database...")
     engine = create_engine(url)
 
-    # 2. Define Migration SQL
-    # We need to:
-    # a) Convert 'up' to 1
-    # b) Convert 'down' to -1
-    # c) Handle NULL or others -> 0 (or leave null? prompted said "0=no feedback")
-    # d) Change column type to INTEGER
-    
-    # PostgreSQL allows "USING" clause for type conversion
-    migration_sql = """
-    ALTER TABLE feedback_logs 
-    ALTER COLUMN rating TYPE INTEGER 
-    USING (
-        CASE 
-            WHEN rating = 'up' THEN 1
-            WHEN rating = 'down' THEN -1
-            WHEN rating IS NULL THEN 0
-            ELSE 0
-        END
-    );
-    """
+    # 2. Check current state
+    check_sql = text("SELECT data_type FROM information_schema.columns WHERE table_name = 'feedback_logs' AND column_name = 'rating'")
 
     # 3. Execute
     try:
         with engine.connect() as conn:
-            print("Running migration...")
+            result = conn.execute(check_sql)
+            row = result.fetchone()
+            
+            if row and row[0].lower() == 'integer':
+                print("Column 'rating' is already INTEGER. Migration skipped.")
+                return
+
+            print("Column type is " + (str(row[0]) if row else "unknown") + ". Running migration...")
+            
+            # 4. Define Migration SQL
+            migration_sql = """
+            ALTER TABLE feedback_logs 
+            ALTER COLUMN rating TYPE INTEGER 
+            USING (
+                CASE 
+                    WHEN rating = 'up' THEN 1
+                    WHEN rating = 'down' THEN -1
+                    ELSE 0
+                END
+            );
+            """
+            
             conn.execute(text(migration_sql))
             conn.commit()
             print("Migration successful! Column 'rating' is now INTEGER.")
+            
     except Exception as e:
-        print(f"Migration failed: {e}")
+        print(f"Migration failed dict: {e}")
 
 if __name__ == "__main__":
     migrate()
