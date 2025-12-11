@@ -66,6 +66,8 @@ def migrate():
 
     except Exception as e:
         print(f"Migration failed dict: {e}")
+        import sys
+        sys.exit(1)
 
 if __name__ == "__main__":
     migrate()
