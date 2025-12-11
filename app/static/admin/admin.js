@@ -1,262 +1,711 @@
-// HTML escaping for XSS protection
-function escapeHtml(unsafe) {
-    if (!unsafe) return '';
-    return String(unsafe)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
+"""
+Admin Analytics API Endpoints.
 
-// ... (navigation logic remains) ...
+Provides data for the analytics dashboard including:
+- Summary statistics
+- Time-series data
+- Feedback analysis
+"""
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import create_engine, func, desc, case, Integer
+from sqlalchemy.orm import sessionmaker
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+from app.core.config import settings
+from app.services.analytics import QueryLog, FeedbackLog, Base, EscalationLog, ExpenseLog
+import logging
+from pydantic import BaseModel, Field
 
-// Robust Date Parsing
-function parseTrendDate(dateStr) {
-    if (!dateStr) return new Date();
-    // Handle various ISO formats from backend (YYYY-MM-DD or YYYY-MM-DDTHH:MM...)
-    // Ensure we parse as UTC if 'Z' is missing to match backend behavior
-    let s = String(dateStr);
+router = APIRouter()
+logger = logging.getLogger(__name__)
 
-    // Quick checks for common formats
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s + 'T00:00:00Z');
-    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s)) return new Date(s.replace(' ', 'T') + ':00Z');
-    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return new Date(s.replace(' ', 'T') + 'Z');
+# Database connection
+engine = create_engine(settings.DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    if (!s.endsWith('Z') && s.includes('T')) s += 'Z';
-    return new Date(s);
-}
 
-// Load Trend Chart
-async function loadTrend(days = 7, startDate = null, endDate = null) {
-    // console.log('loadTrend', days, startDate, endDate);
-    try {
-        // Determine Granularity
-        let granularity = 'day';
-        if (days == 1) granularity = 'hour';
-        if (days == 365) granularity = 'month';
-        if (startDate && endDate) {
-            // Heuristic: if range < 3 days -> hour, else day
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            const diffDays = (end - start) / (1000 * 60 * 60 * 24);
-            if (diffDays <= 3) granularity = 'hour';
-        }
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-        // For "Today" (days=1), use local date string
-        if (days === 1 && !startDate && !endDate) {
-            const today = new Date();
-            const year = today.getFullYear();
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const day = String(today.getDate()).padStart(2, '0');
-            startDate = endDate = `${year}-${month}-${day}`;
-        }
 
-        const daysParam = (startDate && endDate) ? 0 : days;
-
-        // Timezone Offset (Negated for backend compatibility)
-        // EST = +300 in JS -> send -300 to backend
-        const timezoneOffset = -new Date().getTimezoneOffset();
-
-        let msgUrl = `/api/v1/admin/messages-trend?days=${daysParam}&granularity=${granularity}&timezone_offset=${timezoneOffset}`;
-        let fbUrl = `/api/v1/admin/feedback-trend?days=${daysParam}&granularity=${granularity}&timezone_offset=${timezoneOffset}`;
-
-        if (startDate && endDate) {
-            const rangeParam = `&start_date=${startDate}&end_date=${endDate}`;
-            msgUrl += rangeParam;
-            fbUrl += rangeParam;
-        }
-
-        // Parallel Fetch with individual error handling
-        const [msgRes, fbRes] = await Promise.allSettled([
-            fetch(msgUrl),
-            fetch(fbUrl)
-        ]);
-
-        const dataMsg = msgRes.status === 'fulfilled' ? await msgRes.value.json() : { trend: [] };
-        const dataFb = fbRes.status === 'fulfilled' ? await fbRes.value.json() : { trend: [], baseline_up: 0, baseline_down: 0 };
-
-        if (msgRes.status === 'rejected') console.error('Message fetch failed', msgRes.reason);
-        if (fbRes.status === 'rejected') console.error('Feedback fetch failed', fbRes.reason);
-
-        // Calculate Totals (Today Only)
-        const totalMsgEl = document.getElementById('trendTotalMsg');
-        const totalSatEl = document.getElementById('trendTotalSat');
-
-        if (totalMsgEl && totalSatEl) {
-            if (days === 1) {
-                const msgSum = dataMsg.trend.reduce((a, b) => a + b.count, 0);
-                totalMsgEl.textContent = `(Total: ${msgSum})`;
-
-                const upSum = (dataFb.baseline_up || 0) + dataFb.trend.reduce((a, b) => a + b.up, 0);
-                const downSum = (dataFb.baseline_down || 0) + dataFb.trend.reduce((a, b) => a + b.down, 0);
-                const totalVotes = upSum + downSum;
-                const satPct = totalVotes > 0 ? ((upSum / totalVotes) * 100).toFixed(1) : 0;
-                totalSatEl.textContent = `(${satPct}%)`;
-            } else {
-                totalMsgEl.textContent = '';
-                totalSatEl.textContent = '';
-            }
-        }
-
-        // Prepare Labels
-        const labels = dataMsg.trend.map(t => {
-            const d = parseTrendDate(t.date);
-            if (granularity === 'hour' || granularity === '15min') return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-            if (granularity === 'month') return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
-            return d.toLocaleDateString('en-US', { timeZone: 'UTC' });
-        });
-
-        // --- Chart 1: Messages ---
-        const ctxEl1 = document.getElementById('trendChart');
-        const noDataEl = document.getElementById('noTrendData');
-
-        if (ctxEl1) {
-            // Memory Leak Fix: Destroy and nullify old chart
-            if (window.myTrendChart) {
-                window.myTrendChart.destroy();
-                window.myTrendChart = null;
-            }
-
-            const hasData = dataMsg.trend && dataMsg.trend.length > 0 && !dataMsg.trend.every(t => t.count === 0);
-            if (noDataEl) noDataEl.style.display = hasData ? 'none' : 'block';
-
-            const ctx1 = ctxEl1.getContext('2d');
-            const msgDataset = dataMsg.trend.map(t => t.count);
-
-            window.myTrendChart = new Chart(ctx1, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Messages',
-                        data: msgDataset,
-                        backgroundColor: '#667eea',
-                        borderRadius: 4,
-                        barPercentage: 0.6
-                    }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: '#2d3748' } },
-                        x: { type: 'category', grid: { display: false } }
-                    }
-                }
-            });
-        }
-
-        // --- Chart 2: Satisfaction ---
-        const ctxEl2 = document.getElementById('feedbackChart');
-        if (ctxEl2) {
-            if (window.myFeedbackChart) {
-                window.myFeedbackChart.destroy();
-                window.myFeedbackChart = null;
-            }
-            const ctx2 = ctxEl2.getContext('2d');
-
-            let cumulativeUp = dataFb.baseline_up || 0;
-            let cumulativeTotal = (dataFb.baseline_up || 0) + (dataFb.baseline_down || 0);
-            const now = new Date();
-
-            const satDataset = dataFb.trend.map(t => {
-                const d = parseTrendDate(t.date);
-                if (d > now && (granularity === 'hour' || granularity === 'day')) return null;
-                cumulativeUp += t.up;
-                cumulativeTotal += (t.up + t.down);
-                return cumulativeTotal > 0 ? ((cumulativeUp / cumulativeTotal) * 100).toFixed(1) : 0;
-            });
-
-            // Extend to "now" for Today view
-            if (days === 1 && satDataset.length > 0) {
-                const lastRate = satDataset[satDataset.length - 1];
-                if (lastRate !== null) {
-                    labels.push(now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }));
-                    satDataset.push(lastRate);
-                }
-            }
-
-            window.myFeedbackChart = new Chart(ctx2, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Satisfaction %',
-                        data: satDataset,
-                        borderColor: '#48bb78',
-                        backgroundColor: 'rgba(72, 187, 120, 0.1)',
-                        tension: 0,
-                        stepped: true,
-                        borderWidth: 2,
-                        pointRadius: 2,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, max: 100, grid: { color: '#2d3748' }, ticks: { callback: v => v + "%" } },
-                        x: { type: 'category', grid: { display: false } }
-                    }
-                }
-            });
-        }
-
-    } catch (e) {
-        console.error('Trend Error:', e);
+@router.get("/summary")
+async def get_summary_stats(db = Depends(get_db)):
+    """Get overview statistics for dashboard cards."""
+    # Use date-only comparison for "today" to avoid timezone issues
+    # QueryLog.timestamp is stored in UTC
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # Naive UTC for SQLite
+    today = now.date()
+    
+    # Today: Compare the date portion of timestamp in UTC
+    messages_today = db.query(func.count(QueryLog.id)).filter(
+        func.date(QueryLog.timestamp) == today.isoformat()
+    ).scalar() or 0
+    
+    # This Week: Monday to Sunday (UTC)
+    days_since_monday = now.weekday()  # Monday=0, Sunday=6
+    week_start = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end = week_start + timedelta(days=7)
+    
+    # This Month: 1st to now (UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # Use simple string format 'YYYY-MM-DD HH:MM:SS' for SQLite comparison
+    fmt = "%Y-%m-%d %H:%M:%S"
+    
+    # Weekly conversations
+    messages_week = db.query(func.count(QueryLog.id)).filter(
+        QueryLog.timestamp >= week_start.strftime(fmt),
+        QueryLog.timestamp < week_end.strftime(fmt)
+    ).scalar() or 0
+    
+    # Monthly conversations
+    messages_month = db.query(func.count(QueryLog.id)).filter(
+        QueryLog.timestamp >= month_start.strftime(fmt)
+    ).scalar() or 0
+    
+    # Escalation stats (EscalationLog already imported at top)
+    
+    # Total Conversations (Sessions)
+    total_sessions = db.query(func.count(QueryLog.id)).filter(
+        QueryLog.is_initial == 1
+    ).scalar() or 0
+    
+    # Fallback queries
+    total_queries = db.query(func.count(QueryLog.id)).scalar() or 0
+    fallback_queries = db.query(func.count(QueryLog.id)).filter(
+        QueryLog.is_fallback == 1
+    ).scalar() or 0
+    
+    fallback_rate = (fallback_queries / total_queries * 100) if total_queries > 0 else 0
+    
+    # Escalations
+    total_escalations = db.query(func.count(EscalationLog.id)).scalar() or 0
+    
+    # Containment Rate
+    # Ensure we don't divide by zero or have negative containment
+    if total_sessions > 0:
+        containment_rate = max(0, (total_sessions - total_escalations) / total_sessions * 100)
+    else:
+        if total_escalations > 0:
+            logger.warning(f"Escalations exist ({total_escalations}) without sessions - data integrity issue")
+        containment_rate = 100 if total_escalations == 0 else 0
+ 
+    # Feedback stats
+    total_feedback = db.query(func.count(FeedbackLog.id)).scalar() or 0
+    positive_feedback = db.query(func.count(FeedbackLog.id)).filter(
+        FeedbackLog.rating == 'up'
+    ).scalar() or 0
+    negative_feedback = total_feedback - positive_feedback
+    
+    positive_rate = (positive_feedback / total_feedback * 100) if total_feedback > 0 else 0
+    negative_rate = (negative_feedback / total_feedback * 100) if total_feedback > 0 else 0
+    
+    return {
+        "messages_today": messages_today,
+        "messages_week": messages_week,
+        "messages_month": messages_month,
+        "positive_feedback_score": round(positive_rate, 1),
+        "negative_feedback_score": round(negative_rate, 1),
+        "total_feedback": total_feedback,
+        "positive_count": positive_feedback,
+        "negative_count": negative_feedback,
+        "containment_rate": round(containment_rate, 1),
+        "fallback_rate": round(fallback_rate, 1),
+        "total_escalations": total_escalations
     }
-}
 
-// ... helper functions ...
 
-// Fix Event Listeners to pass correct params
-document.getElementById('periodFilter').addEventListener('change', (e) => {
-    const val = e.target.value;
-    if (val === 'custom') {
-        document.getElementById('customDateRange').style.display = 'flex';
-    } else {
-        document.getElementById('customDateRange').style.display = 'none';
-        loadFeedback();
-        // Pass the correct 'days' value based on filter selection
-        let days = 7;
-        if (val === 'day') days = 1;
-        if (val === 'month') days = 30; // Approximation or separate logic needed? 
-        // Admin dashboard currently doesn't map periodFilter to trend days perfectly
-        // But let's assume 'periodFilter' controls the FEEDBACK list, and trend chart might stay at 7?
-        // Wait, current UI has separate buttons for Trend (Today, Last Week...).
-        // periodFilter is for the Feedback List below.
-        // So loadTrend should probably NOT be called here, or called with current Trend state.
-        // For now, let's just NOT call loadTrend() here to avoid resetting it?
-        // Or if we do, adhere to the separate trend buttons.
-        // Actually line 467 called loadTrend() which would reset trend chart to 7 days when I filter feedback list?
-        // That seems wrong. Let's remove loadTrend() from here to decouple them.
-        // The user can update trend chart via the top buttons.
+@router.get("/messages-trend")
+async def get_messages_trend(
+    days: int = Query(default=7, ge=0, le=365), 
+    start_date: Optional[str] = None, 
+    end_date: Optional[str] = None,
+    granularity: str = Query(default="day", pattern="^(15min|minute|hour|day|month)$"),
+    timezone_offset: int = Query(default=0, description="User's timezone offset from UTC in minutes (e.g., -300 for EST)"),
+    db = Depends(get_db)
+):
+    """Get daily or hourly message counts for trend chart."""
+    results = []
+    
+    # Custom Date Range (Priority)
+    if start_date and end_date:
+        try:
+            # Parse as dates in user's local timezone
+            start_date_local = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_date_local = datetime.strptime(end_date, '%Y-%m-%d').date()
+            
+            # Frontend sends timezone_offset as NEGATIVE for timezones behind UTC
+            # (e.g., EST = -300 meaning UTC-5)
+            # To convert local time to UTC, SUBTRACT the offset
+            # Example: EST midnight (offset=-300) → UTC 05:00
+            #          Local 00:00 - (-300 min) = Local 00:00 + 300 min = 05:00 UTC ✓
+            offset_hours = -timezone_offset // 60
+            offset_minutes = -timezone_offset % 60
+            
+            # Create naive datetime at user's local midnight
+            start_dt_naive = datetime.combine(start_date_local, datetime.min.time())
+            end_dt_naive = datetime.combine(end_date_local, datetime.min.time())
+            
+            # Convert to UTC by adding the positive offset (subtracting negative offset)
+            start_dt = start_dt_naive + timedelta(hours=offset_hours, minutes=offset_minutes)
+            end_dt = end_dt_naive + timedelta(hours=offset_hours, minutes=offset_minutes)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+    else:
+        # Last N Days (UTC) - inclusive of current day
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Always use current UTC date as end, not yesterday
+        end_dt = now_utc.date()
+        # For "Last N days", include today as day 1
+        start_dt = end_dt - timedelta(days=days-1)
+
+    # Generate Data
+    if granularity == "15min":
+        # Ensure start_dt and end_dt are datetime objects for filtering
+        if isinstance(start_dt, date):
+            start_dt = datetime.combine(start_dt, datetime.min.time())
+        if isinstance(end_dt, date):
+            end_full = datetime.combine(end_dt, datetime.max.time())
+        else: # end_dt is already a datetime from custom range
+            end_full = end_dt + timedelta(hours=23, minutes=59, seconds=59, microseconds=999999)
+
+        # Use printf for safe concatenation in SQLite; Force integer division
+        bucket = func.printf('%s%02d', func.strftime('%Y-%m-%d %H:', QueryLog.timestamp), func.cast(func.cast(func.strftime('%M', QueryLog.timestamp), Integer) / 15, Integer) * 15)
+        
+        logs = db.query(
+            bucket.label('minute'),
+            func.count(QueryLog.id).label('count')
+        ).filter(QueryLog.timestamp >= start_dt, QueryLog.timestamp <= end_full).group_by('minute').all()
+        
+        results = [{"date": log.minute, "count": log.count} for log in logs]
+        return {"trend": results}
+
+    if granularity == "minute":
+        # Minute-by-minute in last 6 hours
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        start_dt_full = now - timedelta(hours=6)
+        end_full = now
+
+        # Query
+        logs = db.query(
+            func.strftime('%Y-%m-%d %H:%M', QueryLog.timestamp).label('minute'),
+            func.count(QueryLog.id).label('count')
+        ).filter(QueryLog.timestamp >= start_dt_full, QueryLog.timestamp <= end_full).group_by('minute').all()
+        
+        results = [{"date": log.minute, "count": log.count} for log in logs]
+        return {"trend": results}
+
+    if granularity == "hour":
+        # Hourly Buckets - handle both date and datetime objects
+        if isinstance(start_dt, date) and not isinstance(start_dt, datetime):
+            # Last N days logic returns date objects, convert to datetime
+            current = datetime.combine(start_dt, datetime.min.time())
+            end_full = datetime.combine(end_dt, datetime.max.time())
+        else:
+            # Custom range returns datetime objects with timezone adjustment already applied
+            current = start_dt
+            end_full = end_dt + timedelta(hours=23, minutes=59, seconds=59)
+        
+        while current <= end_full:
+            # Get next hour boundary
+            next_hour = current + timedelta(hours=1)
+            
+            # Count messages in this hour using timestamp range (works on both SQLite and PostgreSQL)
+            count = db.query(func.count(QueryLog.id)).filter(
+                QueryLog.timestamp >= current,
+                QueryLog.timestamp < next_hour
+            ).scalar() or 0
+            
+            results.append({
+                "date": current.strftime('%Y-%m-%dT%H:%M:%S'),
+                "count": count
+            })
+            current = next_hour
+    
+    elif granularity == "month":
+        # Monthly Buckets - PostgreSQL compatible
+        current = start_dt.replace(day=1)
+        end_curr = end_dt.replace(day=1)
+        
+        while current <= end_curr:
+            # Calculate start and end of this month
+            if current.month == 12:
+                next_month = current.replace(year=current.year + 1, month=1, day=1)
+            else:
+                next_month = current.replace(month=current.month + 1, day=1)
+            
+            # Count using timestamp range (PostgreSQL compatible)
+            count = db.query(func.count(QueryLog.id)).filter(
+                QueryLog.timestamp >= current,
+                QueryLog.timestamp < next_month
+            ).scalar() or 0
+            
+            results.append({
+                "date": current.strftime('%Y-%m'),
+                "count": count
+            })
+            current = next_month
+    else:
+        # Daily Buckets
+        current = start_dt
+        while current <= end_dt:
+            # Count (UTC timestamps)
+            count = db.query(func.count(QueryLog.id)).filter(
+                func.date(QueryLog.timestamp) == current
+            ).scalar() or 0
+            
+            results.append({
+                "date": current.isoformat(),
+                "count": count
+            })
+            current += timedelta(days=1)
+    
+    return {"trend": results}
+
+
+@router.get("/feedback")
+async def get_feedback_list(
+    rating: Optional[str] = Query(default=None, pattern="^(up|down)$"), 
+    period: Optional[str] = Query(default=None, pattern="^(day|week|month)$"), 
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = Query(default=100, ge=1, le=1000),
+    db = Depends(get_db)
+):
+    """Get recent feedback with optional filter by rating and time period."""
+    query = db.query(FeedbackLog).order_by(desc(FeedbackLog.timestamp))
+    
+    if rating:
+        query = query.filter(FeedbackLog.rating == rating)
+        
+    # Custom date range filter
+    if start_date and end_date:
+        try:
+            start = datetime.fromisoformat(start_date)
+            end = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59)
+            query = query.filter(FeedbackLog.timestamp >= start, FeedbackLog.timestamp <= end)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+    # Preset period filter
+    elif period:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if period == 'day':
+            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == 'week':
+            days_since_monday = now.weekday()
+            start = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == 'month':
+            start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            start = None
+        
+        if start:
+            query = query.filter(FeedbackLog.timestamp >= start)
+    
+    results = query.limit(limit).all()
+    
+    return {
+        "feedback": [
+            {
+                "id": f.id,
+                "timestamp": f.timestamp.replace(tzinfo=timezone.utc).isoformat() if f.timestamp else None,
+                "user_query": f.user_query,
+                "bot_response": f.bot_response,
+                "rating": f.rating
+            }
+            for f in results
+        ]
     }
-});
-
-// Fix Apply Date Button (for Feedback List)
-document.getElementById('applyDateBtn').addEventListener('click', () => {
-    loadFeedback();
-    // Don't reload trend, let trend chart be independent or have its own apply button
-});
-
-// Export button logic remains...
 
 
-document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+@router.get("/feedback-trend")
+async def get_feedback_trend(
+    days: int = Query(default=7, ge=0, le=365), 
+    start_date: Optional[str] = None, 
+    end_date: Optional[str] = None,
+    granularity: str = Query(default="day", pattern="^(15min|minute|hour|day|month)$"),
+    timezone_offset: int = Query(default=0, description="User's timezone offset from UTC in minutes (e.g., -300 for EST)"),
+    db = Depends(get_db)
+):
+    """Get daily or hourly feedback stats (up/down)."""
+    results = []
+    
+    # Custom Date Range (Priority)
+    if start_date and end_date:
+        try:
+            # Parse as naive dates, then adjust for user's timezone
+            start_dt_naive = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt_naive = datetime.strptime(end_date, '%Y-%m-%d')
+            
+            # Apply timezone offset: user's midnight in their TZ = offset minutes later in UTC
+            offset_delta = timedelta(minutes=-timezone_offset)
+            start_dt = start_dt_naive - offset_delta
+            end_dt = end_dt_naive - offset_delta
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+    else:
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        end_dt = now_utc.date()
+        start_dt = end_dt - timedelta(days=days-1)
 
-        tab.classList.add('active');
-        const target = tab.dataset.tab; // 'positive' or 'negative'
-        document.getElementById(target + 'Content').classList.add('active');
-    });
-});
+    # Calculate baseline satisfaction before start_dt (to prevent 0% drop at midnight)
+    baseline_up = db.query(func.count(FeedbackLog.id)).filter(
+        FeedbackLog.timestamp < start_dt,
+        FeedbackLog.rating == 'up'
+    ).scalar() or 0
+    
+    baseline_down = db.query(func.count(FeedbackLog.id)).filter(
+        FeedbackLog.timestamp < start_dt,
+        FeedbackLog.rating == 'down'
+    ).scalar() or 0
+    
+    # Generate Data
+    if granularity == "15min":
+        end_full = datetime.combine(end_dt, datetime.max.time())
+        # Use printf for safe concatenation in SQLite; Force integer division
+        bucket = func.printf('%s%02d', func.strftime('%Y-%m-%d %H:', FeedbackLog.timestamp), func.cast(func.cast(func.strftime('%M', FeedbackLog.timestamp), Integer) / 15, Integer) * 15)
 
-// Init
-loadStats();
-loadFeedback();
-loadTrend(1); // Default to "Today" view
+        logs = db.query(
+            bucket.label('minute'),
+            func.sum(case((FeedbackLog.rating == 'up', 1), else_=0)).label('up'),
+            func.sum(case((FeedbackLog.rating == 'down', 1), else_=0)).label('down')
+        ).filter(FeedbackLog.timestamp >= start_dt, FeedbackLog.timestamp <= end_full).group_by('minute').all()
+        
+        trend_data = [{"date": log.minute, "up": log.up, "down": log.down} for log in logs]
+        return {"trend": trend_data, "baseline_up": baseline_up, "baseline_down": baseline_down}
+
+    if granularity == "minute":
+        end_full = datetime.combine(end_dt, datetime.max.time())
+        logs = db.query(
+            func.strftime('%Y-%m-%d %H:%M', FeedbackLog.timestamp).label('minute'),
+            func.sum(case((FeedbackLog.rating == 'up', 1), else_=0)).label('up'),
+            func.sum(case((FeedbackLog.rating == 'down', 1), else_=0)).label('down')
+        ).filter(FeedbackLog.timestamp >= start_dt, FeedbackLog.timestamp <= end_full).group_by('minute').all()
+        
+        trend_data = [{"date": log.minute, "up": log.up, "down": log.down} for log in logs]
+        return {"trend": trend_data, "baseline_up": baseline_up, "baseline_down": baseline_down}
+
+    if granularity == "hour":
+        current = datetime.combine(start_dt, datetime.min.time())
+        end_full = datetime.combine(end_dt, datetime.max.time())
+        
+        while current <= end_full:
+            next_hour = current + timedelta(hours=1)
+            
+            # Count up/down using timestamp range (PostgreSQL compatible)
+            up_count = db.query(func.count(FeedbackLog.id)).filter(
+                FeedbackLog.timestamp >= current,
+                FeedbackLog.timestamp < next_hour,
+                FeedbackLog.rating == 'up'
+            ).scalar() or 0
+            
+            down_count = db.query(func.count(FeedbackLog.id)).filter(
+                FeedbackLog.timestamp >= current,
+                FeedbackLog.timestamp < next_hour,
+                FeedbackLog.rating == 'down'
+            ).scalar() or 0
+            
+            results.append({
+                "date": current.isoformat(),
+                "up": up_count,
+                "down": down_count
+            })
+            current += timedelta(hours=1)
+            
+    elif granularity == "month":
+        current = start_dt.replace(day=1)
+        end_curr = end_dt.replace(day=1)
+        
+        while current <= end_curr:
+            # Calculate next month
+            if current.month == 12:
+                next_month = current.replace(year=current.year + 1, month=1, day=1)
+            else:
+                next_month = current.replace(month=current.month + 1, day=1)
+            
+            # Count up/down using timestamp range (PostgreSQL compatible)
+            up_count = db.query(func.count(FeedbackLog.id)).filter(
+                FeedbackLog.timestamp >= current,
+                FeedbackLog.timestamp < next_month,
+                FeedbackLog.rating == 'up'
+            ).scalar() or 0
+            
+            down_count = db.query(func.count(FeedbackLog.id)).filter(
+                FeedbackLog.timestamp >= current,
+                FeedbackLog.timestamp < next_month,
+                FeedbackLog.rating == 'down'
+            ).scalar() or 0
+            
+            results.append({
+                "date": current.strftime('%Y-%m'),
+                "up": up_count,
+                "down": down_count
+            })
+            current = next_month
+    else:
+        current = start_dt
+        while current <= end_dt:
+            up_count = db.query(func.count(FeedbackLog.id)).filter(
+                func.date(FeedbackLog.timestamp) == current,
+                FeedbackLog.rating == 'up'
+            ).scalar() or 0
+            
+            down_count = db.query(func.count(FeedbackLog.id)).filter(
+                func.date(FeedbackLog.timestamp) == current,
+                FeedbackLog.rating == 'down'
+            ).scalar() or 0
+            
+            results.append({
+                "date": current.isoformat(),
+                "up": up_count,
+                "down": down_count
+            })
+            current += timedelta(days=1)
+            
+    return {"trend": results, "baseline_up": baseline_up, "baseline_down": baseline_down}
+
+
+
+@router.get("/feedback/export")
+async def export_feedback_csv(
+    rating: Optional[str] = Query(default=None, pattern="^(up|down)$"), 
+    period: Optional[str] = Query(default=None, pattern="^(day|week|month)$"),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db = Depends(get_db)
+):
+    """Export feedback as CSV."""
+    from fastapi.responses import Response
+    import csv
+    import io
+    
+    query = db.query(FeedbackLog).order_by(desc(FeedbackLog.timestamp))
+    
+    if rating:
+        query = query.filter(FeedbackLog.rating == rating)
+    
+    # Custom date range
+    if start_date and end_date:
+        try:
+            start = datetime.fromisoformat(start_date)
+            end = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59)
+            query = query.filter(FeedbackLog.timestamp >= start, FeedbackLog.timestamp <= end)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+    elif period:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if period == 'day':
+            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == 'week':
+            days_since_monday = now.weekday()
+            start = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == 'month':
+            start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            start = None
+        
+        if start:
+            query = query.filter(FeedbackLog.timestamp >= start)
+    
+    results = query.all()
+    
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Timestamp', 'User Query', 'Bot Response', 'Rating'])
+    
+    for f in results:
+        writer.writerow([
+            f.timestamp.replace(tzinfo=timezone.utc).isoformat() if f.timestamp else '',
+            f.user_query or '',
+            f.bot_response or '',
+            f.rating
+        ])
+    
+    csv_content = output.getvalue()
+    
+    # Sanitize filename to prevent injection
+    safe_period = (period or 'all').replace('/', '_').replace('\\', '_').replace('..', '_')
+    safe_rating = (rating or 'all').replace('/', '_').replace('\\', '_').replace('..', '_')
+    filename = f"feedback_{safe_period}_{safe_rating}.csv"
+    
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/top-categories")
+async def get_top_categories(
+    days: int = Query(default=7, ge=1, le=365), 
+    limit: int = Query(default=10, ge=1, le=100), 
+    db = Depends(get_db)
+):
+    """Get most common query categories."""
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    
+    results = db.query(
+        QueryLog.category,
+        func.count(QueryLog.id).label('count')
+    ).filter(
+        QueryLog.timestamp >= since
+    ).group_by(
+        QueryLog.category
+    ).order_by(
+        desc('count')
+    ).limit(limit).all()
+    
+    return {
+        "categories": [
+            {"category": r[0], "count": r[1]}
+            for r in results
+        ]
+    }
+
+# OpenAI Pricing (GPT-4o-mini as of Dec 2024)
+INPUT_COST_PER_TOKEN = 0.00000015  # $0.15 per 1M tokens
+OUTPUT_COST_PER_TOKEN = 0.0000006  # $0.60 per 1M tokens
+EMBEDDING_COST_PER_TOKEN = 0.00000002 # $0.02 per 1M tokens (text-embedding-3-small)
+
+@router.get("/spend")
+async def get_spend_stats(db = Depends(get_db)):
+    """Get spend statistics for the Spend analytics page."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=now.weekday())
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # Use simple format for SQLite comparison
+    fmt = "%Y-%m-%d %H:%M:%S"
+    
+    def get_spend_for_period(start_date):
+        """Calculate tokens and cost for a given period."""
+        # Convert start_date to string format for SQLite comparison
+        start_str = start_date.strftime(fmt)
+        
+        # Query Logs (UTC timestamps)
+        result = db.query(
+            func.coalesce(func.sum(QueryLog.input_tokens), 0).label('input_tokens'),
+            func.coalesce(func.sum(QueryLog.output_tokens), 0).label('output_tokens'),
+            func.coalesce(func.sum(QueryLog.embedding_tokens), 0).label('embedding_tokens'),
+            func.count(QueryLog.id).label('query_count')
+        ).filter(
+            QueryLog.timestamp >= start_str
+        ).first()
+        
+        # Manual Expenses (UTC timestamps)
+        expense_sum = db.query(func.coalesce(func.sum(ExpenseLog.amount), 0)).filter(
+            ExpenseLog.timestamp >= start_str
+        ).scalar()
+        
+        input_tokens = int(result.input_tokens or 0)
+        output_tokens = int(result.output_tokens or 0)
+        embedding_tokens = int(result.embedding_tokens or 0)
+        query_count = int(result.query_count or 0)
+        misc_cost = float(expense_sum or 0)
+        
+        current_input_cost = input_tokens * INPUT_COST_PER_TOKEN
+        current_output_cost = output_tokens * OUTPUT_COST_PER_TOKEN
+        current_embedding_cost = embedding_tokens * EMBEDDING_COST_PER_TOKEN
+        
+        total_cost = current_input_cost + current_output_cost + current_embedding_cost + misc_cost
+        
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "embedding_tokens": embedding_tokens,
+            "total_tokens": input_tokens + output_tokens + embedding_tokens,
+            "chat_cost": round(current_input_cost + current_output_cost, 6),
+            "embedding_cost": round(current_embedding_cost, 6),
+            "misc_cost": round(misc_cost, 6),  # Consistent 6 decimals
+            "cost": round(total_cost, 6),
+            "query_count": query_count
+        }
+    
+    # Get spend for each period
+    today = get_spend_for_period(today_start)
+    week = get_spend_for_period(week_start)
+    month = get_spend_for_period(month_start)
+    
+    # All time
+    all_time_result = db.query(
+        func.coalesce(func.sum(QueryLog.input_tokens), 0).label('input_tokens'),
+        func.coalesce(func.sum(QueryLog.output_tokens), 0).label('output_tokens'),
+        func.coalesce(func.sum(QueryLog.embedding_tokens), 0).label('embedding_tokens'),
+        func.count(QueryLog.id).label('query_count')
+    ).first()
+    
+    all_time_expense = db.query(func.coalesce(func.sum(ExpenseLog.amount), 0)).scalar()
+    
+    all_input = int(all_time_result.input_tokens or 0)
+    all_output = int(all_time_result.output_tokens or 0)
+    all_embed = int(all_time_result.embedding_tokens or 0)
+    all_count = int(all_time_result.query_count or 0)
+    all_misc = float(all_time_expense or 0)
+    
+    all_chat_cost = (all_input * INPUT_COST_PER_TOKEN) + (all_output * OUTPUT_COST_PER_TOKEN)
+    all_embed_cost = all_embed * EMBEDDING_COST_PER_TOKEN
+    all_total_cost = all_chat_cost + all_embed_cost + all_misc
+    
+    all_time = {
+        "input_tokens": all_input,
+        "output_tokens": all_output,
+        "embedding_tokens": all_embed,
+        "total_tokens": all_input + all_output + all_embed,
+        "chat_cost": round(all_chat_cost, 6),
+        "embedding_cost": round(all_embed_cost, 6),
+        "misc_cost": round(all_misc, 6),  # Consistent 6 decimals
+        "cost": round(all_total_cost, 6),
+        "query_count": all_count
+    }
+    
+    # Average cost per query (Total Cost / Total Queries)
+    avg_cost = round(all_total_cost / all_count, 6) if all_count > 0 else 0
+    
+    return {
+        "today": today,
+        "week": week,
+        "month": month,
+        "all_time": all_time,
+        "avg_cost_per_query": avg_cost,
+        "pricing": {
+            "input_per_1m": 0.15,
+            "output_per_1m": 0.60,
+            "embedding_per_1m": 0.02,
+            "model": "gpt-4o-mini + text-embedding-3-small"
+        }
+    }
+
+class ExpenseCreate(BaseModel):
+    category: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(..., min_length=1, max_length=500)
+    amount: float = Field(..., gt=0, le=1000000)  # Positive, capped at 1M
+    date: Optional[str] = Field(None, pattern=r'^\d{4}-\d{2}-\d{2}$')  # YYYY-MM-DD format
+
+@router.post("/expenses")
+async def add_expense(expense: ExpenseCreate):
+    """Add a manual expense."""
+    from app.services.analytics import AnalyticsService
+    service = AnalyticsService()
+    
+    timestamp = None
+    if expense.date:
+        try:
+            # Parse date and set to start of day UTC
+            dt = datetime.strptime(expense.date, "%Y-%m-%d")
+            timestamp = dt
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+
+    service.log_expense(
+        category=expense.category,
+        description=expense.description,
+        amount=expense.amount,
+        timestamp=timestamp
+    )
+    return {"status": "success"}
