@@ -257,8 +257,11 @@ async function loadTrend(days = 7, startDate = null, endDate = null) {
 
         const daysParam = (days === 'custom' || days === 1) ? 0 : days;
 
-        // Get user's timezone offset in minutes (e.g., EST = -300)
-        const timezoneOffset = new Date().getTimezoneOffset();
+        // Get user's timezone offset in minutes
+        // JavaScript returns POSITIVE for timezones BEHIND UTC (e.g., EST = +300)
+        // Backend expects NEGATIVE for timezones behind UTC (standard convention)
+        // So we negate: EST becomes -300
+        const timezoneOffset = -new Date().getTimezoneOffset();
 
         // URLs with timezone offset
         let msgUrl = `/api/v1/admin/messages-trend?days=${daysParam}&granularity=${granularity}&timezone_offset=${timezoneOffset}`;

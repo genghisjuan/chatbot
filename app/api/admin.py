@@ -138,21 +138,21 @@ async def get_messages_trend(
             start_date_local = datetime.strptime(start_date, '%Y-%m-%d').date()
             end_date_local = datetime.strptime(end_date, '%Y-%m-%d').date()
             
-            # For custom date ranges, we treat the date as being in user's timezone
-            # Convert to UTC by applying the timezone offset
-            # EST is UTC-5, so timezone_offset=300 means "5 hours behind UTC"
-            # User's midnight EST = 00:00 EST. This is 05:00 UTC.
-            # So, if timezone_offset is positive for timezones *behind* UTC, we ADD the offset.
-            offset_hours = timezone_offset // 60
-            offset_minutes = timezone_offset % 60
+            # Frontend sends timezone_offset as NEGATIVE for timezones behind UTC
+            # (e.g., EST = -300 meaning UTC-5)
+            # To convert local time to UTC, SUBTRACT the offset
+            # Example: EST midnight (offset=-300) → UTC 05:00
+            #          Local 00:00 - (-300 min) = Local 00:00 + 300 min = 05:00 UTC ✓
+            offset_hours = -timezone_offset // 60
+            offset_minutes = -timezone_offset % 60
             
-            # Create datetime at start of user's local day, then convert to UTC
-            start_dt_local = datetime.combine(start_date_local, datetime.min.time())
-            end_dt_local = datetime.combine(end_date_local, datetime.min.time())
+            # Create naive datetime at user's local midnight
+            start_dt_naive = datetime.combine(start_date_local, datetime.min.time())
+            end_dt_naive = datetime.combine(end_date_local, datetime.min.time())
             
-            # Convert to UTC (add offset because positive offset means behind UTC)
-            start_dt = start_dt_local + timedelta(hours=offset_hours, minutes=offset_minutes)
-            end_dt = end_dt_local + timedelta(hours=offset_hours, minutes=offset_minutes)
+            # Convert to UTC by adding the positive offset (subtracting negative offset)
+            start_dt = start_dt_naive + timedelta(hours=offset_hours, minutes=offset_minutes)
+            end_dt = end_dt_naive + timedelta(hours=offset_hours, minutes=offset_minutes)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
     else:
