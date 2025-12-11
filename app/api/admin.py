@@ -9,7 +9,7 @@ Provides data for the analytics dashboard including:
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import create_engine, func, desc, case, Integer
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime, timedelta, timezone, date
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from app.core.config import settings
 from app.services.analytics import QueryLog, FeedbackLog, Base, EscalationLog, ExpenseLog
@@ -118,6 +118,7 @@ async def get_summary_stats(db = Depends(get_db)):
         "total_escalations": total_escalations
     }
 
+
 @router.get("/messages-trend")
 async def get_messages_trend(
     days: int = Query(default=7, ge=0, le=365), 
@@ -130,76 +131,48 @@ async def get_messages_trend(
     """Get daily or hourly message counts for trend chart."""
     results = []
     
-    # helper to convert local date to UTC datetime range
-    def get_utc_range_from_local_date(d_start: date, d_end: date, tz_offset: int):
-        # Offset calculation:
-        # Frontend sends NEGATIVE for timezones behind UTC (e.g., EST = -300)
-        # We need to SUBTRACT this negative offset (add positive) to go Local -> UTC
-        offset_hours = -tz_offset // 60
-        offset_minutes = -tz_offset % 60
-        
-        start_naive = datetime.combine(d_start, datetime.min.time())
-        end_naive = datetime.combine(d_end, datetime.min.time())
-        
-        utc_start = start_naive + timedelta(hours=offset_hours, minutes=offset_minutes)
-        utc_end = end_naive + timedelta(hours=offset_hours, minutes=offset_minutes)
-        return utc_start, utc_end
-
-    # 1. Determine local date range
-    start_dt_utc = None
-    end_dt_utc = None
-
+    # Custom Date Range (Priority)
     if start_date and end_date:
-        # Custom range
         try:
-            s_local = datetime.strptime(start_date, '%Y-%m-%d').date()
-            e_local = datetime.strptime(end_date, '%Y-%m-%d').date()
-            start_dt_utc, end_dt_utc = get_utc_range_from_local_date(s_local, e_local, timezone_offset)
+            # Parse as dates in user's local timezone
+            start_date_local = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_date_local = datetime.strptime(end_date, '%Y-%m-%d').date()
+            
+            # Frontend sends timezone_offset as NEGATIVE for timezones behind UTC
+            # (e.g., EST = -300 meaning UTC-5)
+            # To convert local time to UTC, SUBTRACT the offset
+            # Example: EST midnight (offset=-300) → UTC 05:00
+            #          Local 00:00 - (-300 min) = Local 00:00 + 300 min = 05:00 UTC ✓
+            offset_hours = -timezone_offset // 60
+            offset_minutes = -timezone_offset % 60
+            
+            # Create naive datetime at user's local midnight
+            start_dt_naive = datetime.combine(start_date_local, datetime.min.time())
+            end_dt_naive = datetime.combine(end_date_local, datetime.min.time())
+            
+            # Convert to UTC by adding the positive offset (subtracting negative offset)
+            start_dt = start_dt_naive + timedelta(hours=offset_hours, minutes=offset_minutes)
+            end_dt = end_dt_naive + timedelta(hours=offset_hours, minutes=offset_minutes)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
     else:
-        # Last N Days
-        # Treat "now" as user's current local time, then back N days
-        # We approximate by taking UTC now, applying offset to get User Local Now
-        # Then rounding to date, then converting back to UTC range
-        # Actually simplest: "Last N Days" usually means "last N 24-hour periods" or "N calendar days ending today"
-        
-        # We'll stick to "N calendar days relative to user's local time"
+        # Last N Days (UTC) - inclusive of current day
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-        
-        # Convert UTC now -> User Local Now
-        # User Local = UTC + offset (Wait, offset is minutes BEHIND UTC, so + (-300) = -300)
-        # Actually frontend sends -300 for EST. 
-        # So User Local = UTC + (offset_minutes)
-        # Let's use the same offset logic as above but reversed
-        
-        # Actually, let's keep it simple:
-        # We want the User's "End Date" (Today).
-        # We can just iterate backwards from "User Today".
-        # But we don't know User Today exactly without full datetime.
-        # However, we can approximate by shifting UTC now by offset.
-        
-        user_offset_delta = timedelta(minutes=timezone_offset)
-        now_user_local = now_utc + user_offset_delta
-        today_user_local = now_user_local.date()
-        
-        start_date_local = today_user_local - timedelta(days=days-1)
-        end_date_local = today_user_local
-        
-        start_dt_utc, end_dt_utc = get_utc_range_from_local_date(start_date_local, end_date_local, timezone_offset)
+        # Always use current UTC date as end, not yesterday
+        end_dt = now_utc.date()
+        # For "Last N days", include today as day 1
+        start_dt = end_dt - timedelta(days=days-1)
 
-    # Note: end_dt_utc here represents the START of the last day (00:00).
-    # For filtering, we need to cover the full end day.
-    # But wait, get_messages_trend logic typically treats end_dt as inclusive for date filters,
-    # but for hourly it needs explicit range.
-    
-    start_dt = start_dt_utc
-    # Ensure end_dt covers the whole day (23:59:59)
-    end_dt = end_dt_utc # This is 00:00 of the end day
-    
     # Generate Data
     if granularity == "15min":
-        end_full = end_dt + timedelta(hours=23, minutes=59, seconds=59)
+        # Ensure start_dt and end_dt are datetime objects for filtering
+        if isinstance(start_dt, date):
+            start_dt = datetime.combine(start_dt, datetime.min.time())
+        if isinstance(end_dt, date):
+            end_full = datetime.combine(end_dt, datetime.max.time())
+        else: # end_dt is already a datetime from custom range
+            end_full = end_dt + timedelta(hours=23, minutes=59, seconds=59, microseconds=999999)
+
         # Use printf for safe concatenation in SQLite; Force integer division
         bucket = func.printf('%s%02d', func.strftime('%Y-%m-%d %H:', QueryLog.timestamp), func.cast(func.cast(func.strftime('%M', QueryLog.timestamp), Integer) / 15, Integer) * 15)
         
@@ -212,16 +185,12 @@ async def get_messages_trend(
         return {"trend": results}
 
     if granularity == "minute":
-        # Minute-by-minute in last 6 hours (Special Override) - keeps original logic?
-        # The original logic used hardcoded "Last 6 hours".
-        # If user asked for granularity=minute, we probably should respect that override.
-        # usage: loadTrend(1) -> granularity=hour.
-        # when is minute used? Maybe specific drill down.
-        # Let's keep original logic for consistency but import date fixed it.
+        # Minute-by-minute in last 6 hours
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         start_dt_full = now - timedelta(hours=6)
         end_full = now
 
+        # Query
         logs = db.query(
             func.strftime('%Y-%m-%d %H:%M', QueryLog.timestamp).label('minute'),
             func.count(QueryLog.id).label('count')
@@ -231,10 +200,15 @@ async def get_messages_trend(
         return {"trend": results}
 
     if granularity == "hour":
-        # Hourly Buckets
-        # start_dt and end_dt are already UTC datetimes starting at 00:00 user local time
-        current = start_dt
-        end_full = end_dt + timedelta(hours=23, minutes=59, seconds=59)
+        # Hourly Buckets - handle both date and datetime objects
+        if isinstance(start_dt, date) and not isinstance(start_dt, datetime):
+            # Last N days logic returns date objects, convert to datetime
+            current = datetime.combine(start_dt, datetime.min.time())
+            end_full = datetime.combine(end_dt, datetime.max.time())
+        else:
+            # Custom range returns datetime objects with timezone adjustment already applied
+            current = start_dt
+            end_full = end_dt + timedelta(hours=23, minutes=59, seconds=59)
         
         while current <= end_full:
             # Get next hour boundary
@@ -593,6 +567,11 @@ async def get_top_categories(
         ]
     }
 
+# OpenAI Pricing (GPT-4o-mini as of Dec 2024)
+INPUT_COST_PER_TOKEN = 0.00000015  # $0.15 per 1M tokens
+OUTPUT_COST_PER_TOKEN = 0.0000006  # $0.60 per 1M tokens
+EMBEDDING_COST_PER_TOKEN = 0.00000002 # $0.02 per 1M tokens (text-embedding-3-small)
+
 @router.get("/spend")
 async def get_spend_stats(db = Depends(get_db)):
     """Get spend statistics for the Spend analytics page."""
@@ -630,9 +609,9 @@ async def get_spend_stats(db = Depends(get_db)):
         query_count = int(result.query_count or 0)
         misc_cost = float(expense_sum or 0)
         
-        current_input_cost = input_tokens * settings.INPUT_COST_PER_TOKEN
-        current_output_cost = output_tokens * settings.OUTPUT_COST_PER_TOKEN
-        current_embedding_cost = embedding_tokens * settings.EMBEDDING_COST_PER_TOKEN
+        current_input_cost = input_tokens * INPUT_COST_PER_TOKEN
+        current_output_cost = output_tokens * OUTPUT_COST_PER_TOKEN
+        current_embedding_cost = embedding_tokens * EMBEDDING_COST_PER_TOKEN
         
         total_cost = current_input_cost + current_output_cost + current_embedding_cost + misc_cost
         
@@ -669,8 +648,8 @@ async def get_spend_stats(db = Depends(get_db)):
     all_count = int(all_time_result.query_count or 0)
     all_misc = float(all_time_expense or 0)
     
-    all_chat_cost = (all_input * settings.INPUT_COST_PER_TOKEN) + (all_output * settings.OUTPUT_COST_PER_TOKEN)
-    all_embed_cost = all_embed * settings.EMBEDDING_COST_PER_TOKEN
+    all_chat_cost = (all_input * INPUT_COST_PER_TOKEN) + (all_output * OUTPUT_COST_PER_TOKEN)
+    all_embed_cost = all_embed * EMBEDDING_COST_PER_TOKEN
     all_total_cost = all_chat_cost + all_embed_cost + all_misc
     
     all_time = {
