@@ -104,6 +104,11 @@ class Settings(BaseSettings):
         default="http://localhost:8000,http://127.0.0.1:8000",
         description="Comma-separated list of allowed CORS origins (e.g., 'https://yourdomain.com,https://www.yourdomain.com')"
     )
+
+    # Pricing (GPT-4o-mini as of Dec 2024)
+    INPUT_COST_PER_TOKEN: float = Field(default=0.00000015, description="Cost per input token")
+    OUTPUT_COST_PER_TOKEN: float = Field(default=0.0000006, description="Cost per output token")
+    EMBEDDING_COST_PER_TOKEN: float = Field(default=0.00000002, description="Cost per embedding token")
     
     # Field Validators
     @field_validator('OPENAI_API_KEY')

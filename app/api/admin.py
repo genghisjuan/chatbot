@@ -496,11 +496,6 @@ async def get_top_categories(
         ]
     }
 
-# OpenAI Pricing (GPT-4o-mini as of Dec 2024)
-INPUT_COST_PER_TOKEN = 0.00000015  # $0.15 per 1M tokens
-OUTPUT_COST_PER_TOKEN = 0.0000006  # $0.60 per 1M tokens
-EMBEDDING_COST_PER_TOKEN = 0.00000002 # $0.02 per 1M tokens (text-embedding-3-small)
-
 @router.get("/spend")
 async def get_spend_stats(db = Depends(get_db)):
     """Get spend statistics for the Spend analytics page."""
@@ -538,9 +533,9 @@ async def get_spend_stats(db = Depends(get_db)):
         query_count = int(result.query_count or 0)
         misc_cost = float(expense_sum or 0)
         
-        current_input_cost = input_tokens * INPUT_COST_PER_TOKEN
-        current_output_cost = output_tokens * OUTPUT_COST_PER_TOKEN
-        current_embedding_cost = embedding_tokens * EMBEDDING_COST_PER_TOKEN
+        current_input_cost = input_tokens * settings.INPUT_COST_PER_TOKEN
+        current_output_cost = output_tokens * settings.OUTPUT_COST_PER_TOKEN
+        current_embedding_cost = embedding_tokens * settings.EMBEDDING_COST_PER_TOKEN
         
         total_cost = current_input_cost + current_output_cost + current_embedding_cost + misc_cost
         
@@ -577,8 +572,8 @@ async def get_spend_stats(db = Depends(get_db)):
     all_count = int(all_time_result.query_count or 0)
     all_misc = float(all_time_expense or 0)
     
-    all_chat_cost = (all_input * INPUT_COST_PER_TOKEN) + (all_output * OUTPUT_COST_PER_TOKEN)
-    all_embed_cost = all_embed * EMBEDDING_COST_PER_TOKEN
+    all_chat_cost = (all_input * settings.INPUT_COST_PER_TOKEN) + (all_output * settings.OUTPUT_COST_PER_TOKEN)
+    all_embed_cost = all_embed * settings.EMBEDDING_COST_PER_TOKEN
     all_total_cost = all_chat_cost + all_embed_cost + all_misc
     
     all_time = {
