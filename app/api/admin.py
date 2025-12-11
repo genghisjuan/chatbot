@@ -134,14 +134,25 @@ async def get_messages_trend(
     # Custom Date Range (Priority)
     if start_date and end_date:
         try:
-            # Parse as naive dates, then adjust for user's timezone
-            start_dt_naive = datetime.strptime(start_date, '%Y-%m-%d')
-            end_dt_naive = datetime.strptime(end_date, '%Y-%m-%d')
+            # Parse as dates in user's local timezone
+            start_date_local = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_date_local = datetime.strptime(end_date, '%Y-%m-%d').date()
             
-            # Apply timezone offset: user's midnight in their TZ = offset minutes later in UTC
-            offset_delta = timedelta(minutes=-timezone_offset)
-            start_dt = start_dt_naive - offset_delta
-            end_dt = end_dt_naive - offset_delta
+            # For custom date ranges, we treat the date as being in user's timezone
+            # Convert to UTC by applying the timezone offset
+            # EST is UTC-5, so timezone_offset=300 means "5 hours behind UTC"
+            # User's midnight EST = 00:00 EST. This is 05:00 UTC.
+            # So, if timezone_offset is positive for timezones *behind* UTC, we ADD the offset.
+            offset_hours = timezone_offset // 60
+            offset_minutes = timezone_offset % 60
+            
+            # Create datetime at start of user's local day, then convert to UTC
+            start_dt_local = datetime.combine(start_date_local, datetime.min.time())
+            end_dt_local = datetime.combine(end_date_local, datetime.min.time())
+            
+            # Convert to UTC (add offset because positive offset means behind UTC)
+            start_dt = start_dt_local + timedelta(hours=offset_hours, minutes=offset_minutes)
+            end_dt = end_dt_local + timedelta(hours=offset_hours, minutes=offset_minutes)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
     else:
@@ -154,7 +165,14 @@ async def get_messages_trend(
 
     # Generate Data
     if granularity == "15min":
-        end_full = datetime.combine(end_dt, datetime.max.time())
+        # Ensure start_dt and end_dt are datetime objects for filtering
+        if isinstance(start_dt, date):
+            start_dt = datetime.combine(start_dt, datetime.min.time())
+        if isinstance(end_dt, date):
+            end_full = datetime.combine(end_dt, datetime.max.time())
+        else: # end_dt is already a datetime from custom range
+            end_full = end_dt + timedelta(hours=23, minutes=59, seconds=59, microseconds=999999)
+
         # Use printf for safe concatenation in SQLite; Force integer division
         bucket = func.printf('%s%02d', func.strftime('%Y-%m-%d %H:', QueryLog.timestamp), func.cast(func.cast(func.strftime('%M', QueryLog.timestamp), Integer) / 15, Integer) * 15)
         
@@ -167,19 +185,30 @@ async def get_messages_trend(
         return {"trend": results}
 
     if granularity == "minute":
-        end_full = datetime.combine(end_dt, datetime.max.time())
+        # Minute-by-minute in last 6 hours
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        start_dt_full = now - timedelta(hours=6)
+        end_full = now
+
+        # Query
         logs = db.query(
             func.strftime('%Y-%m-%d %H:%M', QueryLog.timestamp).label('minute'),
             func.count(QueryLog.id).label('count')
-        ).filter(QueryLog.timestamp >= start_dt, QueryLog.timestamp <= end_full).group_by('minute').all()
+        ).filter(QueryLog.timestamp >= start_dt_full, QueryLog.timestamp <= end_full).group_by('minute').all()
         
-        results = [{"date": log.minute, "count": log.count} for log in logs]
+        results = [{" date": log.minute, "count": log.count} for log in logs]
         return {"trend": results}
 
     if granularity == "hour":
-        # Hourly Buckets (00:00 to 23:59) - PostgreSQL compatible
-        current = datetime.combine(start_dt, datetime.min.time())
-        end_full = datetime.combine(end_dt, datetime.max.time())
+        # Hourly Buckets - handle both date and datetime objects
+        if isinstance(start_dt, date) and not isinstance(start_dt, datetime):
+            # Last N days logic returns date objects, convert to datetime
+            current = datetime.combine(start_dt, datetime.min.time())
+            end_full = datetime.combine(end_dt, datetime.max.time())
+        else:
+            # Custom range returns datetime objects with timezone adjustment already applied
+            current = start_dt
+            end_full = end_dt + timedelta(hours=23, minutes=59, seconds=59)
         
         while current <= end_full:
             # Get next hour boundary
