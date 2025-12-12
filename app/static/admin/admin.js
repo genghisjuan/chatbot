@@ -27,6 +27,50 @@ const state = {
     loading: false
 };
 
+// --- Date Filter Persistence ---
+const FILTER_STORAGE_KEY = 'juna_admin_date_filter_v1';
+
+function getTodayRange() {
+    const today = new Date().toISOString().split('T')[0];
+    return { start: today, end: today };
+}
+
+function loadDateFilter() {
+    try {
+        const saved = localStorage.getItem(FILTER_STORAGE_KEY);
+        if (!saved) return null;
+
+        const parsed = JSON.parse(saved);
+        const validModes = ['today', 'week', 'month', 'year', 'custom'];
+
+        // Validate mode
+        if (!validModes.includes(parsed.mode)) return null;
+
+        // Validate custom dates
+        if (parsed.mode === 'custom') {
+            if (!parsed.start || !parsed.end) return null;
+            // Basic date format validation
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(parsed.start) || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.end)) {
+                return null;
+            }
+        }
+
+        return parsed;
+    } catch (e) {
+        console.warn('Failed to load date filter:', e);
+        return null;
+    }
+}
+
+function saveDateFilter() {
+    const filterState = {
+        mode: state.range,
+        start: state.startDate,
+        end: state.endDate
+    };
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filterState));
+}
+
 // --- Initialization ---
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -69,6 +113,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // RESTORE DATE FILTER BEFORE INIT
+    const savedFilter = loadDateFilter();
+    if (savedFilter) {
+        state.range = savedFilter.mode;
+        state.startDate = savedFilter.start;
+        state.endDate = savedFilter.end;
+    } else {
+        // Default to today
+        const todayRange = getTodayRange();
+        state.range = 'today';
+        state.startDate = todayRange.start;
+        state.endDate = todayRange.end;
+        saveDateFilter();
+    }
 
     initNavigation();
     initDateFilters();
@@ -132,28 +190,44 @@ function initNavigation() {
 function initDateFilters() {
     const select = document.getElementById('rangeSelect');
     const customDiv = document.getElementById('customDateInputs');
+    const startInput = document.getElementById('startDate');
+    const endInput = document.getElementById('endDate');
 
-    // SYNC STATE WITH DROPDOWN ON INIT (Fix for refresh preserving filter)
-    state.range = select.value;
+    // SYNC UI WITH RESTORED STATE
+    select.value = state.range;
+
+    if (state.range === 'custom') {
+        customDiv.style.display = 'flex';
+        if (state.startDate) startInput.value = state.startDate;
+        if (state.endDate) endInput.value = state.endDate;
+    } else {
+        customDiv.style.display = 'none';
+    }
 
     select.addEventListener('change', (e) => {
         state.range = e.target.value;
+
         if (state.range === 'custom') {
             customDiv.style.display = 'flex';
         } else {
             customDiv.style.display = 'none';
+            // Save and fetch for non-custom ranges
+            saveDateFilter();
             fetchData();
         }
     });
 
     document.getElementById('applyCustomBtn').addEventListener('click', () => {
-        state.startDate = document.getElementById('startDate').value;
-        state.endDate = document.getElementById('endDate').value;
+        state.startDate = startInput.value;
+        state.endDate = endInput.value;
 
         if (!state.startDate || !state.endDate) {
             showError("Please select both start and end dates");
             return;
         }
+
+        // Save and fetch
+        saveDateFilter();
         fetchData();
     });
 }
@@ -354,23 +428,122 @@ function renderTrends(data) {
     const categoryData = cats.map(c => c[1]);
     const totalCount = categoryData.reduce((sum, val) => sum + val, 0);
 
-    // PRIORITY-BASED CATEGORY COLOR MAPPING
-    const categoryColorMap = {
-        'outage': '#EF4444',
-        'payment': '#7C3AED',
-        'network/connectivity': '#F97316',
-        'hardware/device': '#A16207',
-        'software/application': '#EAB308',
-        'billing': '#22C55E',
-        'product info': '#3B82F6',
-        'general inquiry': '#9CA3AF'
+    // DETERMINISTIC CATEGORY COLOR MAPPING (by exact name, case-insensitive)
+    const CATEGORY_COLORS = {
+        "outage": "#E11D48",               // strong red
+        "payment": "#7C3AED",              // purple
+        "payments": "#7C3AED",             // purple (plural alias)
+        "network/connectivity": "#F59E0B", // amber
+        "hardware/device": "#2563EB",      // blue
+        "software/application": "#10B981", // green
+        "payment/billing": "#06B6D4",      // cyan
+        "billing": "#06B6D4",              // cyan (alias)
+        "product info": "#A3E635",         // lime
+        "general inquiry": "#94A3B8"       // slate/gray
     };
 
-    // Map colors to categories
-    const catColors = cats.map(([categoryName]) => {
-        const normalized = categoryName.toLowerCase().replace(/\s+/g, '/');
-        return categoryColorMap[normalized] || '#9CA3AF';
-    });
+    // Helper: Get color for category name (case-insensitive, flexible matching)
+    function getCategoryColor(categoryName) {
+        const normalized = categoryName.toLowerCase().trim();
+
+        // Try exact match first
+        if (CATEGORY_COLORS[normalized]) {
+            return CATEGORY_COLORS[normalized];
+        }
+
+        // Try with common variations
+        const variations = [
+            normalized,
+            normalized.replace(/\s+/g, '/'),    // "network connectivity" -> "network/connectivity"
+            normalized.replace(/\//g, ' '),     // "network/connectivity" -> "network connectivity"
+            normalized.replace(/\s+/g, '-'),    // "product info" -> "product-info"
+            normalized.replace(/-/g, ' ')       // "product-info" -> "product info"
+        ];
+
+        for (const variant of variations) {
+            if (CATEGORY_COLORS[variant]) {
+                return CATEGORY_COLORS[variant];
+            }
+        }
+
+        // Unknown category - log warning and return fallback
+        console.warn(`Unknown category "${categoryName}" - using fallback color`);
+        return '#FFFFFF'; // White fallback (visible error state)
+    }
+
+    // Map colors to categories (deterministic)
+    const catColors = cats.map(([categoryName]) => getCategoryColor(categoryName));
+
+    // NO DATA STATE DETECTION
+    if (totalCount === 0) {
+        // Hide legend
+        const legendContainer = document.getElementById('categoryLegend');
+        if (legendContainer) {
+            legendContainer.innerHTML = '';
+        }
+
+        // Destroy existing chart if present
+        if (charts.chartCategories) {
+            charts.chartCategories.destroy();
+            charts.chartCategories = null;
+        }
+
+        // Render neutral placeholder
+        const chartContainer = document.getElementById('chartCategories');
+        if (chartContainer) {
+            chartContainer.style.display = 'none'; // Hide canvas
+
+            // Create or update placeholder
+            let placeholder = document.getElementById('categoryNoData');
+            if (!placeholder) {
+                placeholder = document.createElement('div');
+                placeholder.id = 'categoryNoData';
+                placeholder.className = 'chart-no-data';
+                chartContainer.parentNode.appendChild(placeholder);
+            }
+
+            placeholder.innerHTML = `
+                <div class="no-data-icon">
+                    <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="40" cy="40" r="30" stroke="#475569" stroke-width="2.5" stroke-dasharray="6 6" opacity="0.4"/>
+                        <circle cx="40" cy="40" r="20" stroke="#475569" stroke-width="2" opacity="0.2"/>
+                    </svg>
+                </div>
+                <div class="no-data-content">
+                    <div class="no-data-text">No data available</div>
+                    <div class="no-data-hint">Try selecting a different date range</div>
+                </div>
+            `;
+            placeholder.style.display = 'flex';
+        }
+
+        return; // Exit early - don't render chart
+    }
+
+    // NORMAL MODE: Has data
+    // Hide placeholder if it exists
+    const placeholder = document.getElementById('categoryNoData');
+    if (placeholder) {
+        placeholder.style.display = 'none';
+    }
+
+    // Show chart canvas
+    const chartContainer = document.getElementById('chartCategories');
+    if (chartContainer) {
+        chartContainer.style.display = 'block';
+    }
+
+    // Validation: Check for color duplicates (dev mode)
+    if (console.assert) {
+        const colorCounts = {};
+        catColors.forEach(color => {
+            colorCounts[color] = (colorCounts[color] || 0) + 1;
+        });
+        const duplicates = Object.entries(colorCounts).filter(([color, count]) => count > 1 && color !== '#FFFFFF');
+        if (duplicates.length > 0) {
+            console.warn('Duplicate colors detected:', duplicates);
+        }
+    }
 
     // GENERATE CUSTOM LEGEND (Inline Header)
     const legendContainer = document.getElementById('categoryLegend');
@@ -447,10 +620,20 @@ function updateVolumeChart(metric) {
 
     // Y-Axis config factory
     const createYAxis = (title) => ({
+        ...axisStyles,
         beginAtZero: true,
         suggestedMax: 5,
         title: { display: true, text: title, color: '#9ca3af' },
-        ...axisStyles
+        ticks: {
+            ...axisStyles.ticks,
+            stepSize: 1,
+            precision: 0,
+            callback: function (value) {
+                if (Number.isInteger(value)) {
+                    return value;
+                }
+            }
+        }
     });
 
     switch (metric) {
