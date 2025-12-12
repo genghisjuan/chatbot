@@ -360,24 +360,32 @@ class AnalyticsService:
                 if message_id:
                     existing = db.query(FeedbackLog).filter(FeedbackLog.message_id == message_id).first()
                 
+                # Convert string rating to integer
+                rating_map = {"up": 1, "down": -1, "none": 0}
+                # Handle integer input gracefully if it ever changes
+                if isinstance(rating, int):
+                    rating_val = rating
+                else:
+                    rating_val = rating_map.get(rating, 0)
+
                 if existing:
-                    if rating == "none":
+                    if rating_val == 0:
                         # Toggle off -> Delete
                         db.delete(existing)
                         logger.info(f"Feedback removed: MsgID={message_id}")
                     else:
                         # Update existing
-                        existing.rating = rating
+                        existing.rating = rating_val
                         existing.timestamp = datetime.datetime.utcnow()
-                        logger.info(f"Feedback updated: MsgID={message_id}, Rating={rating}")
+                        logger.info(f"Feedback updated: MsgID={message_id}, Rating={rating_val}")
                 
                 else:
-                    # Create new (only if not 'none')
-                    if rating != "none":
+                    # Create new (only if not 'none'/0)
+                    if rating_val != 0:
                         log_entry = FeedbackLog(
                             user_query=user_query,
                             bot_response=bot_response,
-                            rating=rating,
+                            rating=rating_val,
                             message_id=message_id
                         )
                         db.add(log_entry)

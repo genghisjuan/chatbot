@@ -14,6 +14,9 @@ const state = {
     startDate: null,
     endDate: null,
 
+    // Volume Chart Metric
+    volumeMetric: 'queries',
+
     // Feedback
     fbRating: 1, // 1 (pos) or -1 (neg)
     fbPage: 1,
@@ -27,6 +30,43 @@ const state = {
 // --- Initialization ---
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Restore View
+    const savedView = localStorage.getItem('admin_view');
+    if (savedView) {
+        state.view = savedView;
+        document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
+        document.getElementById(`view-${savedView}`).classList.add('active');
+    } else {
+        // If no saved view, default to 'overview' and activate it
+        state.view = 'overview';
+        document.getElementById('view-overview').classList.add('active');
+    }
+
+    // Restore Chart Metric (for Trends page)
+    const savedMetric = localStorage.getItem('admin_chart_metric');
+    const allowedMetrics = ['queries', 'positive', 'negative'];
+    if (savedMetric && allowedMetrics.includes(savedMetric)) {
+        state.volumeMetric = savedMetric;
+
+        // Update active tab (if tabs are present)
+        document.querySelectorAll('.chart-tab').forEach(tab => {
+            tab.classList.remove('active');
+            if (tab.dataset.metric === savedMetric) {
+                tab.classList.add('active');
+            }
+        });
+    }
+
+    // Set UI Active State for navigation items based on restored view
+    document.querySelectorAll('.nav-item').forEach(item => {
+        if (item.dataset.view === state.view) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    });
+
+
     initNavigation();
     initDateFilters();
     initFeedbackControls();
@@ -54,13 +94,33 @@ function initNavigation() {
             document.getElementById(`view-${view}`).classList.add('active');
 
             state.view = view;
+            localStorage.setItem('admin_view', view);
+
             fetchData();
         });
     });
 
     document.getElementById('refreshBtn').addEventListener('click', fetchData);
     document.getElementById('exportBtn').addEventListener('click', handleExport);
+
+    // Tab switching for Volume chart metrics
+    document.querySelectorAll('.chart-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const metric = e.target.dataset.metric;
+
+            // Update active state
+            document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+            e.target.classList.add('active');
+
+            // Update state and re-render chart
+            state.volumeMetric = metric;
+            localStorage.setItem('admin_chart_metric', metric); // Persist selection
+            updateVolumeChart(metric);
+        });
+    });
 }
+
+// ... existing code ...
 
 // --- Date Filters ---
 
@@ -148,9 +208,7 @@ async function fetchAPI(endpoint) {
 // --- Rendering: Overview ---
 
 function renderOverview(data) {
-    setText('kpi-conversations', formatNum(data.total_conversations));
     setText('kpi-queries', formatNum(data.total_queries));
-    setText('kpi-avg-queries', data.avg_queries_per_conversation);
 
     setText('kpi-phone-esc', data.phone_escalations);
     setText('kpi-email-esc', data.email_escalations);
@@ -226,7 +284,21 @@ function renderFeedbackList(data) {
         el.className = 'feedback-item';
         el.onclick = () => el.classList.toggle('expanded');
 
-        const date = new Date(item.timestamp).toLocaleString();
+        // Backend returns UTC timestamp without Z, so add it for proper parsing
+        const utcTimestamp = item.timestamp.endsWith('Z') ? item.timestamp : item.timestamp + 'Z';
+        const date = new Date(utcTimestamp);
+
+        // Display in EST timezone
+        const dateStr = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        }).format(date);
 
         el.innerHTML = `
             <div class="feedback-summary">
@@ -234,7 +306,7 @@ function renderFeedbackList(data) {
                     <strong>${escapeHTML(item.user_query.substring(0, 60))}...</strong>
                 </div>
                 <div class="fb-meta">
-                    ${date} <i class="fas fa-chevron-down"></i>
+                    ${dateStr} <i class="fas fa-chevron-down"></i>
                 </div>
             </div>
             <div class="fb-details">
@@ -260,64 +332,201 @@ function renderFeedbackList(data) {
 // --- Rendering: Trends (Charts) ---
 
 let charts = {};
+let trendsData = null; // Cache for tab switching
 
 function renderTrends(data) {
-    // 1. Volume Chart
-    renderChart('chartVolume', 'line', {
-        labels: data.message_volume.labels,
-        datasets: [
-            {
-                label: 'Queries',
-                data: data.message_volume.queries,
-                borderColor: '#3b82f6',
-                tension: 0.3
-            },
-            {
-                label: 'Conversations',
-                data: data.message_volume.conversations,
-                borderColor: '#10b981',
-                tension: 0.3
-            }
-        ]
-    });
+    // Cache data globally for tab switching
+    trendsData = data;
 
-    // 2. Feedback Chart
-    renderChart('chartFeedback', 'bar', {
-        labels: data.feedback_trend.labels,
-        datasets: [
-            {
-                label: 'Positive %',
-                data: data.feedback_trend.positive_rate,
-                backgroundColor: '#10b981'
-            },
-            {
-                label: 'Negative %',
-                data: data.feedback_trend.negative_rate,
-                backgroundColor: '#ef4444'
-            }
-        ]
-    });
+    // 1. Volume Chart with current metric
+    updateVolumeChart(state.volumeMetric);
 
-    // 3. Category Chart
-    const cats = Object.entries(data.categories); // [['hw', 10], ...]
+    // 2. Category Chart (full width now)
+    const cats = Object.entries(data.categories); // [['Hardware/Device', 10], ...]
+    const categoryData = cats.map(c => c[1]);
+    const totalCount = categoryData.reduce((sum, val) => sum + val, 0);
+
     renderChart('chartCategories', 'doughnut', {
         labels: cats.map(c => titleCase(c[0])),
         datasets: [{
-            data: cats.map(c => c[1]),
+            data: categoryData,
             backgroundColor: [
-                '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
-                '#8b5cf6', '#ec4899', '#6366f1', '#64748b'
+                '#3b82f6', // Blue
+                '#10b981', // Green
+                '#f59e0b', // Amber
+                '#ef4444', // Red
+                '#8b5cf6', // Violet
+                '#ec4899', // Pink
+                '#6366f1', // Indigo
+                '#14b8a6', // Teal
+                '#f97316', // Orange
+                '#06b6d4', // Cyan
+                '#84cc16', // Lime
+                '#64748b'  // Slate
             ]
         }]
+    }, {
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: function (context) {
+                        const label = context.label || '';
+                        const value = context.parsed || 0;
+                        const percent = totalCount > 0 ? ((value / totalCount) * 100).toFixed(1) : 0;
+                        return `${label}: ${value} (${percent}%)`;
+                    }
+                }
+            }
+        }
     });
 }
 
+function updateVolumeChart(metric) {
+    if (!trendsData) return;
+
+    // Map range to time unit (must match backend granularity)
+    let timeUnit;
+    switch (state.range) {
+        case 'today':
+            timeUnit = 'hour';
+            break;
+        case 'week':
+        case 'month':
+            timeUnit = 'day';
+            break;
+        case 'year':
+            timeUnit = 'month';
+            break;
+        default:
+            timeUnit = 'day'; // Safe fallback
+    }
+
+    const labels = trendsData.message_volume.labels;
+
+    let dataset, yAxisConfig;
+
+    switch (metric) {
+        case 'queries':
+            dataset = {
+                label: 'Queries',
+                data: trendsData.message_volume.queries,
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                fill: false,
+                tension: 0.3
+            };
+            yAxisConfig = { beginAtZero: true, suggestedMax: 5, title: { display: true, text: 'Count' } };
+            break;
+
+        case 'positive':
+            dataset = {
+                label: 'Positive Feedback',
+                data: trendsData.feedback_trend.positive_count,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                fill: true,
+                tension: 0.3
+            };
+            yAxisConfig = { beginAtZero: true, suggestedMax: 5, title: { display: true, text: 'Count' } };
+            break;
+
+        case 'negative':
+            dataset = {
+                label: 'Negative Feedback',
+                data: trendsData.feedback_trend.negative_count,
+                borderColor: '#ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                fill: true,
+                tension: 0.3
+            };
+            yAxisConfig = { beginAtZero: true, suggestedMax: 5, title: { display: true, text: 'Count' } };
+            break;
+    }
+
+    const config = {
+        labels: labels,
+        datasets: [dataset]
+    };
+
+    const options = {
+        plugins: {
+            legend: {
+                display: false // Hide the legend toggle
+            }
+        },
+        scales: {
+            x: {
+                type: 'time',
+                time: {
+                    unit: timeUnit,
+                    displayFormats: {
+                        hour: 'h a',        // "12 AM", "1 PM"
+                        day: 'MMM d',       // "Dec 11", "Dec 12"
+                        month: 'MMM'        // "Jan", "Feb", "Mar"
+                    }
+                }
+            },
+            y: yAxisConfig
+        }
+    };
+
+    // Check if chart exists
+    if (charts.chartVolume) {
+        // Update existing chart (no re-mount)
+        charts.chartVolume.data = config;
+        charts.chartVolume.options.scales.x.time.unit = timeUnit; // Update time unit
+        charts.chartVolume.options.scales.y = yAxisConfig;
+        charts.chartVolume.update();
+    } else {
+        // Initial render
+        renderChart('chartVolume', 'line', config, options);
+    }
+}
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Navigation Logic
+    // -------------------------------------------------------------------------
+    function showPage(pageId) {
+        // Update Sidebar
+        document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
+        const activeLink = document.querySelector(`.sidebar li[onclick*="'${pageId}'"]`);
+        if (activeLink) activeLink.classList.add('active');
+
+        // Update Content
+        document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
+        document.getElementById(pageId).classList.add('active');
+
+        // Save state
+        localStorage.setItem('admin_active_page', pageId);
+
+        // Refresh Data if needed
+        if (pageId === 'overview') loadOverview();
+        if (pageId === 'trends') loadTrends();
+        if (pageId === 'spend') loadSpend();
+    }
+
+    // Load initial state
+    const savedPage = localStorage.getItem('admin_active_page') || 'overview';
+    showPage(savedPage);
+
+    // Initial Load (if default)
+    // showPage handles loading data, so we don't need explicit loadOverview() here 
+    // unless showPage('overview') is called.
+});
+
+// Chart.js Helpers
+// ...
+
 function renderChart(id, type, data, options = {}) {
     const ctx = document.getElementById(id).getContext('2d');
-
     if (charts[id]) {
         charts[id].destroy();
     }
+
+    // REMOVED: Label mutation that was breaking Chart.js time axis parsing
+    // The backend returns ISO strings like "2025-12-11 19:00"
+    // Chart.js time axis needs these in raw format, not pre-formatted
 
     charts[id] = new Chart(ctx, {
         type: type,
@@ -325,13 +534,8 @@ function renderChart(id, type, data, options = {}) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: type === 'doughnut' ? {} : {
-                x: {
-                    type: 'time',
-                    time: { unit: 'day', displayFormats: { day: 'MMM d' } }
-                },
-                y: { beginAtZero: true }
-            },
+            // REMOVED: Default scales config that was overriding renderTrends config
+            // Each chart type (doughnut vs line/bar) now controls its own axis via options param
             ...options
         }
     });

@@ -97,32 +97,26 @@
 
                 <!-- KPI Grid -->
                 <div class="kpi-grid">
-                    <div class="kpi-card">
-                        <div class="kpi-label">Total Conversations</div>
-                        <div class="kpi-value" id="kpi-conversations">-</div>
-                    </div>
+                    <!-- Total Conversations Removed -->
                     <div class="kpi-card">
                         <div class="kpi-label">Total Queries</div>
                         <div class="kpi-value" id="kpi-queries">-</div>
                     </div>
                     <div class="kpi-card">
-                        <div class="kpi-label">Avg Queries/Conv</div>
-                        <div class="kpi-value" id="kpi-avg-queries">-</div>
+                        <div class="kpi-label">Email Escalations</div>
+                        <div class="kpi-value" id="kpi-email-esc">-</div>
                     </div>
                     <div class="kpi-card">
-                        <div class="kpi-label">Escalations</div>
-                        <div class="kpi-subtext">
-                            <span id="kpi-phone-esc">-</span> <i class="fas fa-phone"></i> &nbsp;|&nbsp;
-                            <span id="kpi-email-esc">-</span> <i class="fas fa-envelope"></i>
-                        </div>
+                        <div class="kpi-label">Phone Escalations</div>
+                        <div class="kpi-value" id="kpi-phone-esc">-</div>
                     </div>
 
-                    <div class="kpi-card success-border">
+                    <div class="kpi-card">
                         <div class="kpi-label">Positive Feedback</div>
                         <div class="kpi-value text-success" id="kpi-pos-count">-</div>
                         <div class="kpi-subtext" id="kpi-pos-rate">-%</div>
                     </div>
-                    <div class="kpi-card error-border">
+                    <div class="kpi-card">
                         <div class="kpi-label">Negative Feedback</div>
                         <div class="kpi-value text-error" id="kpi-neg-count">-</div>
                         <div class="kpi-subtext" id="kpi-neg-rate">-%</div>
@@ -156,26 +150,29 @@
                 </div>
             </section>
 
+
             <!-- VIEW: TRENDS -->
             <section id="view-trends" class="view-section">
                 <h2 class="section-title">Analytics Trends</h2>
 
                 <div class="charts-grid">
+                    <!-- Volume Chart with Metric Tabs -->
                     <div class="chart-card full-width">
-                        <h3>Volume Over Time</h3>
+                        <div class="chart-header-with-tabs">
+                            <h3>Volume Over Time</h3>
+                            <div class="chart-tabs">
+                                <button class="chart-tab active" data-metric="queries">Queries</button>
+                                <button class="chart-tab" data-metric="positive">Positive Feedback</button>
+                                <button class="chart-tab" data-metric="negative">Negative Feedback</button>
+                            </div>
+                        </div>
                         <div class="chart-container">
                             <canvas id="chartVolume"></canvas>
                         </div>
                     </div>
 
-                    <div class="chart-card half-width">
-                        <h3>Feedback Rates</h3>
-                        <div class="chart-container">
-                            <canvas id="chartFeedback"></canvas>
-                        </div>
-                    </div>
-
-                    <div class="chart-card half-width">
+                    <!-- Category Distribution - Full Width -->
+                    <div class="chart-card full-width">
                         <h3>Category Distribution</h3>
                         <div class="chart-container">
                             <canvas id="chartCategories"></canvas>

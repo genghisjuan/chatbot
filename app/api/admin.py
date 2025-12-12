@@ -155,7 +155,7 @@ def get_summary(
         phone_esc = db.query(EscalationLog).filter(
             EscalationLog.timestamp >= start_utc,
             EscalationLog.timestamp <= end_utc,
-            EscalationLog.type == 'phone'
+            EscalationLog.type.in_(['phone', 'callback', 'call-inbound'])
         ).count()
 
         email_esc = db.query(EscalationLog).filter(
@@ -176,7 +176,6 @@ def get_summary(
             "negative_feedback_rate": round(neg_rate, 1),
             "phone_escalations": phone_esc,
             "email_escalations": email_esc,
-            "avg_queries_per_conversation": round(avg_qpc, 1),
             "period_start": start_utc.isoformat(),
             "period_end": end_utc.isoformat()
         }
@@ -194,43 +193,77 @@ def get_trends(
 ):
     start_utc, end_utc, granularity = _parse_range(range, start_date, end_date)
 
-    # Helper for date truncation in UTC -> EST conversion
-    # We want buckets in EST. 
-    # PostgreSQL: date_trunc(granularity, timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')
-    # But SQLAlchemy 'func.timezone' logic is DB specific. 
-    # For safety with PostgreSQL:
-    # timestamp is stored as TIMESTAMPTZ (UTC).
-    # We convert to EST then truncate.
+    # Dictionary to hold aggregated data
+    # Key: bucket_string (ISO format), Value: {queries: 0, conversations: 0}
+    timeline = {}
+
+    # Helper to generate buckets within the range
+    # This ensures we have entries even for empty periods (optional but good for charts)
+    current = start_utc
+    # We'll rely on the data loop to create buckets to keep it simple, 
+    # but a gaps-filling logic is better for charts.
+    # For now, let's just aggregate actual data.
     
-    ts_col = QueryLog.timestamp
-    # Convert UTC timestamp column to EST for bucketing
-    ts_est = func.timezone('America/New_York', ts_col)
-    
-    bucket = func.date_trunc(granularity, ts_est).label("bucket")
-    
-    # 1. Conversations & Queries Over Time
-    # Group by EST bucket
-    data_points = db.query(
-        bucket,
-        func.count(QueryLog.id).label("queries"),
-        func.sum(case((QueryLog.is_initial == 1, 1), else_=0)).label("conversations")
-    ).filter(
+    # 1. Fetch RAW data
+    query_logs = db.query(QueryLog.timestamp, QueryLog.is_initial).filter(
         QueryLog.timestamp >= start_utc,
         QueryLog.timestamp <= end_utc
-    ).group_by("bucket").order_by("bucket").all()
+    ).all()
 
-    # Format for chart (labels, datasets)
-    labels = []
-    ds_queries = []
-    ds_conversations = []
+    # 2. Aggregate in Python
+    # --------------------------------------------------------------------------
+    
+    # Pre-fill timeline to ensure 0s
+    timeline = {}
+    fb_timeline = {}
 
-    for row in data_points:
-        # row.bucket is naive datetime (EST)
-        labels.append(row.bucket.isoformat())
-        ds_queries.append(row.queries)
-        ds_conversations.append(row.conversations or 0) # sum can be null
+    step = timedelta(days=1)
+    if granularity == "hour":
+        step = timedelta(hours=1)
+    elif granularity == "week":
+        step = timedelta(weeks=1)
+    
+    curr = start_utc
+    while curr <= end_utc:
+        curr_est = curr.astimezone(EST)
+        b_key = _truncate_date(curr_est, granularity)
+        
+        if b_key not in timeline:
+            timeline[b_key] = {"queries": 0, "conversations": 0}
+        
+        if b_key not in fb_timeline:
+            fb_timeline[b_key] = {"pos": 0, "neg": 0}
+            
+        curr += step
 
-    # 2. Category Distribution
+    for q_ts, is_init in query_logs:
+        if not q_ts: continue
+        
+        # FIX: SQLite may return naive strings/datetimes. Assume UTC if naive.
+        if q_ts.tzinfo is None:
+            q_ts = q_ts.replace(tzinfo=timezone.utc)
+            
+        # Convert to EST for display
+        ts_est = q_ts.astimezone(EST)
+        
+        # Truncate based on granularity
+        bucket_key = _truncate_date(ts_est, granularity)
+        
+        if bucket_key not in timeline:
+            timeline[bucket_key] = {"queries": 0, "conversations": 0}
+        
+        timeline[bucket_key]["queries"] += 1
+        if is_init:
+            timeline[bucket_key]["conversations"] += 1
+
+    # Sort by date
+    sorted_keys = sorted(timeline.keys())
+    labels = [k for k in sorted_keys]
+    ds_queries = [timeline[k]["queries"] for k in sorted_keys]
+    ds_conversations = [timeline[k]["conversations"] for k in sorted_keys]
+
+    # 3. Category Distribution
+    # --------------------------------------------------------------------------
     cat_data = db.query(
         QueryLog.category,
         func.count(QueryLog.id)
@@ -239,44 +272,88 @@ def get_trends(
         QueryLog.timestamp <= end_utc
     ).group_by(QueryLog.category).all()
     
-    categories = {
-        "hardware": 0, "software": 0, "network": 0, "outage": 0, 
-        "general question": 0, "billing": 0, "product info": 0, "payments": 0
+    # Normalization Map
+    CAT_MAP = {
+        "hardware": "Hardware/Device",
+        "hardware/device": "Hardware/Device",
+        "software": "Software/Application", 
+        "software/application": "Software/Application",
+        "network": "Network/Connectivity",
+        "network/connectivity": "Network/Connectivity",
+        "general question": "General Inquiry",
+        "general inquiry": "General Inquiry",
+        "billing": "Payment/Billing",
+        "payment/billing": "Payment/Billing"
     }
-    # Fill actuals
-    for cat, count in cat_data:
-        if cat: # handle None
-            norm_cat = cat.lower()
-            if norm_cat in categories:
-                categories[norm_cat] = count
-            else:
-                # Group 'other' strategies if needed, or just add
-                categories[cat] = count
 
-    # 3. Feedback Rates Over Time
-    fb_ts_est = func.timezone('America/New_York', FeedbackLog.timestamp)
-    fb_bucket = func.date_trunc(granularity, fb_ts_est).label("bucket")
+    # Pre-fill ALL categories for legend (User Request)
+    categories = {
+        "Hardware/Device": 0,
+        "Software/Application": 0,
+        "Network/Connectivity": 0,
+        "General Inquiry": 0,
+        "Payment/Billing": 0,
+        "Outage": 0,
+        "Product Info": 0,
+        "Payments": 0 # Legacy?
+    }
     
-    fb_data = db.query(
-        fb_bucket,
-        func.sum(case((FeedbackLog.rating == 1, 1), else_=0)).label("pos"),
-        func.sum(case((FeedbackLog.rating == -1, 1), else_=0)).label("neg")
-    ).filter(
+    for cat, count in cat_data:
+        if cat:
+            norm_cat_key = cat.lower()
+            final_cat = CAT_MAP.get(norm_cat_key, cat.title())
+            categories[final_cat] = categories.get(final_cat, 0) + count
+
+    # 4. Feedback Trends
+    # --------------------------------------------------------------------------
+
+    feedback_logs = db.query(FeedbackLog.timestamp, FeedbackLog.rating).filter(
         FeedbackLog.timestamp >= start_utc,
         FeedbackLog.timestamp <= end_utc
-    ).group_by("bucket").order_by("bucket").all()
+    ).all()
+    
+    # fb_timeline already pre-filled above
 
-    fb_labels = []
-    ds_pos_rate = []
-    ds_neg_rate = []
+    for f_ts, rating in feedback_logs:
+        if not f_ts: continue
+        
+        # FIX: SQLite Naive handling
+        if f_ts.tzinfo is None:
+            f_ts = f_ts.replace(tzinfo=timezone.utc)
+            
+        ts_est = f_ts.astimezone(EST)
+        bucket_key = _truncate_date(ts_est, granularity)
+        
+        if bucket_key not in fb_timeline:
+            fb_timeline[bucket_key] = {"pos": 0, "neg": 0}
+        
+        # FIX: Normalize rating value (SQLite may return strings even when stored as int)
+        # Also handle legacy 'up'/'down' values that may exist in database
+        normalized_rating = None
+        if rating in [1, '1', 'up']:
+            normalized_rating = 1
+        elif rating in [-1, '-1', 'down']:
+            normalized_rating = -1
+        # 0 or any other value is ignored
+        
+        if normalized_rating == 1:
+            fb_timeline[bucket_key]["pos"] += 1
+        elif normalized_rating == -1:
+            fb_timeline[bucket_key]["neg"] += 1
 
-    for row in fb_data:
-        fb_labels.append(row.bucket.isoformat())
-        total = (row.pos or 0) + (row.neg or 0)
-        p = ((row.pos or 0) / total * 100) if total > 0 else 0
-        n = ((row.neg or 0) / total * 100) if total > 0 else 0
-        ds_pos_rate.append(round(p, 1))
-        ds_neg_rate.append(round(n, 1))
+    # Align Feedback labels with main timeline or use its own?
+    # Usually easier to use its own sparse keys or align.
+    # Let's just sort its own keys.
+    fb_sorted_keys = sorted(fb_timeline.keys())
+    fb_labels = fb_sorted_keys
+    ds_pos_count = []
+    ds_neg_count = []
+
+    # Return raw counts per hour (not percentages)
+    for k in fb_sorted_keys:
+        d = fb_timeline[k]
+        ds_pos_count.append(d["pos"])
+        ds_neg_count.append(d["neg"])
 
     return {
         "message_volume": {
@@ -287,10 +364,24 @@ def get_trends(
         "categories": categories,
         "feedback_trend": {
             "labels": fb_labels,
-            "positive_rate": ds_pos_rate,
-            "negative_rate": ds_neg_rate
+            "positive_count": ds_pos_count,
+            "negative_count": ds_neg_count
         }
     }
+
+def _truncate_date(dt, granularity):
+    """Helper to truncate datetime to string bucket key."""
+    if granularity == "hour":
+        return dt.strftime("%Y-%m-%d %H:00")
+    elif granularity == "day":
+        return dt.strftime("%Y-%m-%d")
+    elif granularity == "week":
+        # Start of week (Monday)
+        start = dt - timedelta(days=dt.weekday())
+        return start.strftime("%Y-%m-%d")
+    elif granularity == "month":
+        return dt.strftime("%Y-%m")
+    return dt.strftime("%Y-%m-%d")
 
 @router.get("/spend")
 def get_spend(
@@ -427,15 +518,19 @@ def export_feedback(
             i.id,
             i.timestamp.isoformat() if i.timestamp else "",
             r_label,
-            i.user_query,
-            i.bot_response
+            i.user_query or "",
+            i.bot_response or ""
         ])
     
     output.seek(0)
+    
+    # Dynamic filename based on selected range (feedback logs only)
+    filename = f"feedback_logs_{range}.csv"
+    
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=feedback_export.csv"}
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
 # 4. Alerts (Background Task)
