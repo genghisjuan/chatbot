@@ -4,148 +4,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Juna Admin Dashboard</title>
-
-    <!-- Fonts & Icons -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-    <script
-        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-
-    <!-- Styles -->
+    <title>JUNA Admin</title>
     <link rel="stylesheet" href="/static/admin/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
 
 <body>
-
-    <!-- Header -->
-    <header class="app-header">
-        <div class="header-left">
-            <div class="logo">
-                <i class="fas fa-robot"></i>
-                <span>Juna Admin</span>
-            </div>
-            <span class="status-badge" id="systemStatus">Online</span>
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="Juna Logo">
         </div>
+        <div class="nav-item active" data-view="overview" onclick="location.hash='overview'">
+            <i class="fas fa-home"></i> Overview
+        </div>
+        <div class="nav-item" data-view="trends" onclick="location.hash='trends'">
+            <i class="fas fa-chart-line"></i> Trends
+        </div>
+        <div class="nav-item" data-view="spend" onclick="location.hash='spend'">
+            <i class="fas fa-dollar-sign"></i> Spend
+        </div>
+    </nav>
 
-        <div class="header-right">
-            <!-- Global Date Filter -->
-            <div class="date-filter-group">
-                <select id="rangeSelect" class="form-select">
-                    <option value="today">Today</option>
-                    <option value="week">This Week</option>
-                    <option value="month">This Month</option>
-                    <option value="year">This Year</option>
-                    <option value="custom">Custom Range</option>
-                </select>
+    <!-- Main Content -->
+    <div class="main-layout">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-left">
+                <span class="logo">JUNA Admin</span>
+            </div>
+
+            <div class="header-center">
+
+                <div class="date-filter-group">
+                    <select id="rangeSelect" class="form-select">
+                        <option value="today">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month" selected>This Month</option>
+                        <option value="year">This Year</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                </div>
 
                 <div id="customDateInputs" class="custom-dates" style="display: none;">
                     <input type="date" id="startDate" class="form-input">
-                    <span class="separator">to</span>
+                    <span class="separator">-</span>
                     <input type="date" id="endDate" class="form-input">
                     <button id="applyCustomBtn" class="btn btn-sm btn-primary">Apply</button>
                 </div>
+
+                <!-- Moved Buttons to Center as requested -->
+                <button id="exportBtn" class="btn btn-outline" title="Export Feedback CSV">
+                    <i class="fas fa-download"></i> Export CSV
+                </button>
+                <button id="refreshBtn" class="btn btn-icon" title="Refresh Data">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
             </div>
 
-            <button id="exportBtn" class="btn btn-outline">
-                <i class="fas fa-download"></i> Export CSV
-            </button>
-
-            <button id="refreshBtn" class="btn btn-icon" title="Refresh Data">
-                <i class="fas fa-sync-alt"></i>
-            </button>
-        </div>
-    </header>
-
-    <!-- Main Layout -->
-    <div class="app-container">
-
-        <!-- Sidebar Navigation -->
-        <nav class="sidebar">
-            <div class="nav-item active" data-view="overview" role="button" tabindex="0">
-                <i class="fas fa-home"></i> Overview
+            <div class="header-right">
+                <div class="status-indicator">
+                    <div class="status-dot"></div> Online
+                </div>
             </div>
-            <div class="nav-item" data-view="trends" role="button" tabindex="0">
-                <i class="fas fa-chart-line"></i> Trends
-            </div>
-            <div class="nav-item" data-view="spend" role="button" tabindex="0">
-                <i class="fas fa-dollar-sign"></i> Spend
-            </div>
-        </nav>
+        </header>
 
-        <!-- Main Content -->
+        <!-- Content Area -->
         <main class="content-area">
-
-            <!-- Loading Indicator -->
-            <div id="loadingOverlay" class="loading-overlay" style="display: none;">
-                <div class="spinner"></div>
-            </div>
 
             <!-- Error Banner -->
             <div id="errorBanner" class="error-banner" style="display: none;">
                 <i class="fas fa-exclamation-circle"></i>
-                <span id="errorMessage">An error occurred</span>
-                <button class="close-btn" onclick="this.parentElement.style.display='none'">&times;</button>
+                <span id="errorMessage">An error occurred.</span>
+                <button class="close-btn" onclick="hideError()">&times;</button>
+            </div>
+
+            <!-- Loading Overlay -->
+            <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+                <div class="spinner"></div>
             </div>
 
             <!-- VIEW: OVERVIEW -->
             <section id="view-overview" class="view-section active">
                 <h2 class="section-title">Performance Overview</h2>
 
-                <!-- KPI Grid -->
                 <div class="kpi-grid">
-                    <!-- Total Conversations Removed -->
                     <div class="kpi-card">
                         <div class="kpi-label">Total Queries</div>
                         <div class="kpi-value" id="kpi-queries">-</div>
+                        <div class="kpi-subtext">Selected Period</div>
                     </div>
                     <div class="kpi-card">
                         <div class="kpi-label">Email Escalations</div>
                         <div class="kpi-value" id="kpi-email-esc">-</div>
+                        <div class="kpi-subtext">Email</div>
                     </div>
                     <div class="kpi-card">
                         <div class="kpi-label">Phone Escalations</div>
                         <div class="kpi-value" id="kpi-phone-esc">-</div>
+                        <div class="kpi-subtext">Phone</div>
                     </div>
-
                     <div class="kpi-card">
                         <div class="kpi-label">Positive Feedback</div>
                         <div class="kpi-value text-success" id="kpi-pos-count">-</div>
-                        <div class="kpi-subtext" id="kpi-pos-rate">-%</div>
+                        <div class="kpi-subtext" id="kpi-pos-rate">-% Rate</div>
                     </div>
                     <div class="kpi-card">
                         <div class="kpi-label">Negative Feedback</div>
                         <div class="kpi-value text-error" id="kpi-neg-count">-</div>
-                        <div class="kpi-subtext" id="kpi-neg-rate">-%</div>
+                        <div class="kpi-subtext" id="kpi-neg-rate">-% Rate</div>
                     </div>
                 </div>
 
-                <!-- Feedback Section -->
-                <div class="card feedback-section">
+                <!-- Feedback Review Module -->
+                <div class="feedback-section">
                     <div class="card-header">
                         <h3>Feedback Review</h3>
+                        <input type="text" id="feedbackSearch" class="form-input" placeholder="Search queries..."
+                            style="max-width: 300px; margin: 0 auto;">
                         <div class="tab-controls">
                             <button class="tab-btn active" data-rating="1">Positive</button>
                             <button class="tab-btn" data-rating="-1">Negative</button>
                         </div>
                     </div>
 
-                    <div class="toolbar">
-                        <input type="text" id="feedbackSearch" placeholder="Search query..."
-                            class="form-input search-input">
-                    </div>
-
-                    <div class="feedback-list" id="feedbackList">
-                        <!-- Items rendered here -->
+                    <div id="feedbackList">
+                        <!-- Populated by JS -->
                     </div>
 
                     <div class="pagination">
-                        <button id="prevPage" class="btn btn-sm" disabled>Previous</button>
+                        <button id="prevPage" class="btn btn-sm" disabled aria-label="Previous page">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
                         <span id="pageInfo">Page 1</span>
-                        <button id="nextPage" class="btn btn-sm">Next</button>
+                        <button id="nextPage" class="btn btn-sm" aria-label="Next page">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -173,7 +171,10 @@
 
                     <!-- Category Distribution - Full Width -->
                     <div class="chart-card full-width">
-                        <h3>Category Distribution</h3>
+                        <div class="chart-header-with-tabs">
+                            <h3>Category Distribution</h3>
+                            <div id="categoryLegend" class="legend-inline"></div>
+                        </div>
                         <div class="chart-container">
                             <canvas id="chartCategories"></canvas>
                         </div>

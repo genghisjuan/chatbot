@@ -226,7 +226,11 @@ body {
 }
 
 .chat-header {
-    padding: 16px 24px;
+    box-sizing: border-box;
+    /* COMPUTED HEIGHT FIX: Include border in 50px */
+    height: 50px;
+    /* MATCH ADMIN HEADER HEIGHT */
+    padding: 0 24px;
     border-bottom: 1px solid #1e1e2e;
     background: #0d0d14;
     display: flex;
@@ -238,6 +242,8 @@ body {
     font-size: 1.1em;
     font-weight: 500;
     color: #fff;
+    margin: 0;
+    /* Remove default margins from h1/h2/div if strictly typed */
 }
 
 .status-indicator {
@@ -781,7 +787,6 @@ button:hover {
     margin-top: 10px;
 }
 
-/* Toggle Switch */
 /* Toggle Switch */
 .theme-switch-wrapper {
     display: flex;

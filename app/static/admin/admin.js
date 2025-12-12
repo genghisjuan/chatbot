@@ -42,6 +42,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('view-overview').classList.add('active');
     }
 
+    // UPDATE: Set body attribute for CSS scoping
+    document.body.dataset.view = state.view;
+
     // Restore Chart Metric (for Trends page)
     const savedMetric = localStorage.getItem('admin_chart_metric');
     const allowedMetrics = ['queries', 'positive', 'negative'];
@@ -94,6 +97,7 @@ function initNavigation() {
             document.getElementById(`view-${view}`).classList.add('active');
 
             state.view = view;
+            document.body.dataset.view = view; // UPDATE: CSS Scoping
             localStorage.setItem('admin_view', view);
 
             fetchData();
@@ -124,9 +128,13 @@ function initNavigation() {
 
 // --- Date Filters ---
 
+
 function initDateFilters() {
     const select = document.getElementById('rangeSelect');
     const customDiv = document.getElementById('customDateInputs');
+
+    // SYNC STATE WITH DROPDOWN ON INIT (Fix for refresh preserving filter)
+    state.range = select.value;
 
     select.addEventListener('change', (e) => {
         state.range = e.target.value;
@@ -346,24 +354,47 @@ function renderTrends(data) {
     const categoryData = cats.map(c => c[1]);
     const totalCount = categoryData.reduce((sum, val) => sum + val, 0);
 
+    // PRIORITY-BASED CATEGORY COLOR MAPPING
+    const categoryColorMap = {
+        'outage': '#EF4444',
+        'payment': '#7C3AED',
+        'network/connectivity': '#F97316',
+        'hardware/device': '#A16207',
+        'software/application': '#EAB308',
+        'billing': '#22C55E',
+        'product info': '#3B82F6',
+        'general inquiry': '#9CA3AF'
+    };
+
+    // Map colors to categories
+    const catColors = cats.map(([categoryName]) => {
+        const normalized = categoryName.toLowerCase().replace(/\s+/g, '/');
+        return categoryColorMap[normalized] || '#9CA3AF';
+    });
+
+    // GENERATE CUSTOM LEGEND (Inline Header)
+    const legendContainer = document.getElementById('categoryLegend');
+    if (legendContainer) {
+        legendContainer.innerHTML = '';
+        cats.forEach(([categoryName], index) => {
+            const label = titleCase(categoryName);
+            const color = catColors[index];
+
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            item.innerHTML = `<div class="legend-dot" style="background-color: ${color}"></div>${label}`;
+            legendContainer.appendChild(item);
+        });
+    }
+
     renderChart('chartCategories', 'doughnut', {
         labels: cats.map(c => titleCase(c[0])),
         datasets: [{
             data: categoryData,
-            backgroundColor: [
-                '#3b82f6', // Blue
-                '#10b981', // Green
-                '#f59e0b', // Amber
-                '#ef4444', // Red
-                '#8b5cf6', // Violet
-                '#ec4899', // Pink
-                '#6366f1', // Indigo
-                '#14b8a6', // Teal
-                '#f97316', // Orange
-                '#06b6d4', // Cyan
-                '#84cc16', // Lime
-                '#64748b'  // Slate
-            ]
+            borderWidth: 0, // UPDATE: Remove white borders
+            hoverBorderWidth: 0,
+            borderColor: 'transparent',
+            backgroundColor: catColors
         }]
     }, {
         plugins: {
@@ -376,6 +407,9 @@ function renderTrends(data) {
                         return `${label}: ${value} (${percent}%)`;
                     }
                 }
+            },
+            legend: {
+                display: false // DISABLE CHARTJS LEGEND (Handled custom inline)
             }
         }
     });
@@ -405,6 +439,20 @@ function updateVolumeChart(metric) {
 
     let dataset, yAxisConfig;
 
+    // Common axis styles
+    const axisStyles = {
+        grid: { color: 'rgba(255, 255, 255, 0.05)' }, // UPDATE: Visible grid
+        ticks: { color: '#9ca3af' }
+    };
+
+    // Y-Axis config factory
+    const createYAxis = (title) => ({
+        beginAtZero: true,
+        suggestedMax: 5,
+        title: { display: true, text: title, color: '#9ca3af' },
+        ...axisStyles
+    });
+
     switch (metric) {
         case 'queries':
             dataset = {
@@ -415,7 +463,7 @@ function updateVolumeChart(metric) {
                 fill: false,
                 tension: 0.3
             };
-            yAxisConfig = { beginAtZero: true, suggestedMax: 5, title: { display: true, text: 'Count' } };
+            yAxisConfig = createYAxis('Count');
             break;
 
         case 'positive':
@@ -427,7 +475,7 @@ function updateVolumeChart(metric) {
                 fill: true,
                 tension: 0.3
             };
-            yAxisConfig = { beginAtZero: true, suggestedMax: 5, title: { display: true, text: 'Count' } };
+            yAxisConfig = createYAxis('Count');
             break;
 
         case 'negative':
@@ -439,7 +487,7 @@ function updateVolumeChart(metric) {
                 fill: true,
                 tension: 0.3
             };
-            yAxisConfig = { beginAtZero: true, suggestedMax: 5, title: { display: true, text: 'Count' } };
+            yAxisConfig = createYAxis('Count');
             break;
     }
 
@@ -464,7 +512,8 @@ function updateVolumeChart(metric) {
                         day: 'MMM d',       // "Dec 11", "Dec 12"
                         month: 'MMM'        // "Jan", "Feb", "Mar"
                     }
-                }
+                },
+                ...axisStyles
             },
             y: yAxisConfig
         }
@@ -476,6 +525,11 @@ function updateVolumeChart(metric) {
         charts.chartVolume.data = config;
         charts.chartVolume.options.scales.x.time.unit = timeUnit; // Update time unit
         charts.chartVolume.options.scales.y = yAxisConfig;
+
+        // Explicitly update grid colors if chart exists
+        charts.chartVolume.options.scales.x.grid = axisStyles.grid;
+        charts.chartVolume.options.scales.y.grid = axisStyles.grid;
+
         charts.chartVolume.update();
     } else {
         // Initial render
@@ -509,14 +563,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load initial state
     const savedPage = localStorage.getItem('admin_active_page') || 'overview';
     showPage(savedPage);
-
-    // Initial Load (if default)
-    // showPage handles loading data, so we don't need explicit loadOverview() here 
-    // unless showPage('overview') is called.
 });
 
 // Chart.js Helpers
-// ...
 
 function renderChart(id, type, data, options = {}) {
     const ctx = document.getElementById(id).getContext('2d');
@@ -524,18 +573,17 @@ function renderChart(id, type, data, options = {}) {
         charts[id].destroy();
     }
 
-    // REMOVED: Label mutation that was breaking Chart.js time axis parsing
-    // The backend returns ISO strings like "2025-12-11 19:00"
-    // Chart.js time axis needs these in raw format, not pre-formatted
-
     charts[id] = new Chart(ctx, {
         type: type,
         data: data,
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            // REMOVED: Default scales config that was overriding renderTrends config
-            // Each chart type (doughnut vs line/bar) now controls its own axis via options param
+            elements: {
+                arc: {
+                    borderWidth: 0 // Global fallback for no borders
+                }
+            },
             ...options
         }
     });
