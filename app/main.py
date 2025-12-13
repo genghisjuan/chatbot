@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from app.api.admin import router as admin_router
 from app.api.chat import router as chat_router
 from app.api.tts import router as tts_router
@@ -111,6 +111,11 @@ async def favicon():
 async def admin_page() -> FileResponse:
     return FileResponse("app/static/admin/index.html")
 
+# Helper to serve mobile page
+@app.get("/m", include_in_schema=False)
+async def mobile_page() -> FileResponse:
+    return FileResponse("app/static/mobile/index.html")
+
 # CORS already added above (before rate limiting middleware)
 
 # API Routers
@@ -118,6 +123,22 @@ app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(chat_router, prefix="/api/v1", tags=["Chat"])
 app.include_router(tts_router, prefix="/api/v1", tags=["TTS"])
 
-# Mount static files (order matters: specific paths before catch-all)
+# Mount static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static_assets")
-app.mount("/", StaticFiles(directory="app/static", html=True), name="static_root")  # Catches all other routes
+
+# Root handler with mobile detection
+@app.get("/", include_in_schema=False)
+async def root_page(request: Request):
+    """Serve desktop or redirect to mobile based on user-agent"""
+    user_agent = request.headers.get("user-agent", "").lower()
+    
+    # Check for mobile devices
+    is_mobile = any(keyword in user_agent for keyword in [
+        "mobile", "android", "iphone", "ipad", "ipod",
+        "blackberry", "windows phone", "webos"
+    ])
+    
+    if is_mobile:
+        return RedirectResponse(url="/m", status_code=302)
+    else:
+        return FileResponse("app/static/index.html")
