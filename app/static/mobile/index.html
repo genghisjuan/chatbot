@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>JUNA Assistant - Mobile</title>
+
+    <!-- Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Mobile Styles -->
+    <link rel="stylesheet" href="/static/mobile/mobile.css">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="mobile-header">
+        <div class="header-content">
+            <h1 class="brand">JUNA</h1>
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span class="status-text">Online</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Chat Transcript Container -->
+    <main class="chat-container">
+        <div class="chat-messages" id="chatMessages">
+            <!-- Welcome Message -->
+            <div class="message-wrapper bot">
+                <div class="message">
+                    <strong>Hello!</strong> 👋<br>
+                    I'm your AI Support Assistant. How can I help you today?
+                </div>
+            </div>
+
+            <!-- Typing Indicator (hidden by default) -->
+            <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </main>
+
+    <!-- Composer Container -->
+    <div class="composer-container">
+        <div class="input-wrapper">
+            <button class="action-btn" id="actionBtn" aria-label="Actions">
+                <i class="fas fa-plus"></i>
+            </button>
+            <input type="text" id="messageInput" class="message-input" placeholder="Type a message..."
+                autocomplete="off">
+            <button class="send-btn" id="sendBtn" aria-label="Send">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile JavaScript -->
+    <script src="/static/mobile/mobile.js"></script>
+</body>
+
+</html>
