@@ -10,7 +10,8 @@
     --text-secondary: rgba(255, 255, 255, 0.7);
     --accent-primary: #667eea;
     --border-color: rgba(255, 255, 255, 0.1);
-    --message-bot-bg: #1a1f2e;
+    --message-bot-bg: #1e2433;
+    /* Slightly lighter for better text contrast */
     --message-user-bg: #667eea;
 }
 
@@ -92,24 +93,43 @@ body {
     }
 }
 
+/* Message entrance animation */
+@keyframes messageSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* Chat Container */
 .chat-container {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
+    padding: 16px;
+    /* Balanced padding */
     -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    /* Smooth auto-scroll */
 }
 
 .chat-messages {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
+    /* Tighter for better conversation flow */
 }
 
 /* Messages */
 .message-wrapper {
     display: flex;
     width: 100%;
+    animation: messageSlideIn 0.25s ease-out;
+    /* Smooth entrance */
 }
 
 .message-wrapper.bot {
@@ -122,10 +142,14 @@ body {
 
 .message {
     max-width: 80%;
-    padding: 12px 16px;
+    padding: 10px 14px;
+    /* Slightly reduced for better density */
     border-radius: 12px;
     font-size: 15px;
-    line-height: 1.5;
+    line-height: 1.6;
+    /* Improved readability */
+    letter-spacing: 0.01em;
+    /* Subtle legibility boost */
 }
 
 .message-wrapper.bot .message {
@@ -143,8 +167,9 @@ body {
 .composer-container {
     background: var(--bg-secondary);
     border-top: 1px solid var(--border-color);
-    padding: 16px 20px;
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    padding: 12px 16px;
+    /* Reduced for better density */
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
     flex-shrink: 0;
 }
 
@@ -156,6 +181,12 @@ body {
     border: 2px solid var(--border-color);
     border-radius: 24px;
     padding: 8px 12px;
+    transition: border-color 0.2s ease;
+}
+
+/* Input focus state */
+.input-wrapper:focus-within {
+    border-color: rgba(102, 126, 234, 0.4);
 }
 
 .action-btn,
@@ -164,14 +195,18 @@ body {
     border: none;
     color: var(--text-secondary);
     font-size: 18px;
-    width: 40px;
-    height: 40px;
+    min-width: 44px;
+    /* WCAG AAA touch target */
+    min-height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
-    transition: color 0.2s ease;
+    transition: all 0.2s ease;
+    /* Smooth all properties */
+    border-radius: 8px;
+    /* For focus ring */
 }
 
 .action-btn:hover,
@@ -188,6 +223,31 @@ body {
     color: #5568d3;
 }
 
+/* Button press feedback */
+.send-btn:active,
+.action-btn:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
+}
+
+/* Focus ring for accessibility */
+.send-btn:focus-visible,
+.action-btn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+/* Stop button active state */
+.send-btn.stop-active {
+    color: #e53e3e;
+    /* Red to indicate stop */
+}
+
+.send-btn.stop-active:hover {
+    color: #c53030;
+    /* Darker red on hover */
+}
+
 .message-input {
     flex: 1;
     background: transparent;
@@ -196,11 +256,13 @@ body {
     font-family: inherit;
     font-size: 16px;
     outline: none;
-    padding: 8px 4px;
+    padding: 10px 4px;
+    /* Larger touch area */
 }
 
 .message-input::placeholder {
-    color: var(--text-secondary);
+    color: rgba(255, 255, 255, 0.5);
+    /* Clearer Contrast */
 }
 
 /* iOS Safe Area */
@@ -253,7 +315,7 @@ body {
 /* Disabled Input State */
 .input-wrapper.disabled {
     opacity: 0.6;
-    pointer-events: none;
+    /* pointer-events: none; Removed to allow stop button interaction */
 }
 
 .input-wrapper.disabled .message-input {

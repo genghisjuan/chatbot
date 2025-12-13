@@ -8,6 +8,7 @@ class MobileChat {
         this.conversationHistory = [];
         this.isGenerating = false;
         this.abortController = null;
+        this.shouldStopStreaming = false; // Flag to break stream loop
 
         // DOM Elements
         this.chatMessages = document.getElementById('chatMessages');
@@ -21,8 +22,14 @@ class MobileChat {
     init() {
         console.log('JUNA Mobile Chat initialized');
 
-        // Send button click
-        this.sendBtn.addEventListener('click', () => this.handleSend());
+        // Unified send/stop button click handler
+        this.sendBtn.addEventListener('click', () => {
+            if (this.isGenerating) {
+                this.handleStop();
+            } else {
+                this.handleSend();
+            }
+        });
 
         // Enter key to send
         this.messageInput.addEventListener('keypress', (e) => {
@@ -31,6 +38,36 @@ class MobileChat {
                 this.handleSend();
             }
         });
+    }
+
+    updateSendButton(isStreaming) {
+        if (isStreaming) {
+            // Show stop icon
+            this.sendBtn.innerHTML = '<i class="fas fa-stop"></i>';
+            this.sendBtn.classList.add('stop-active');
+        } else {
+            // Show send icon
+            this.sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+            this.sendBtn.classList.remove('stop-active');
+        }
+    }
+
+    handleStop() {
+        if (this.abortController) {
+            // Signal to break stream loop
+            this.shouldStopStreaming = true;
+
+            // Abort the request
+            this.abortController.abort();
+
+            // Immediately clean up UI (don't wait for error propagation)
+            this.isGenerating = false;
+            this.abortController = null;
+            this.toggleInputState(false);
+            this.typingIndicator.style.display = 'none';
+            this.updateSendButton(false);
+            this.messageInput.focus();
+        }
     }
 
     async handleSend() {
@@ -48,8 +85,17 @@ class MobileChat {
         // Update conversation history
         this.conversationHistory.push({ role: "user", content: text });
 
+        // Reset streaming flag
+        this.shouldStopStreaming = false;
+
+        // Set generating state BEFORE showing stop button
+        this.isGenerating = true;
+
         // Disable input during generation
         this.toggleInputState(true);
+
+        // Show stop button
+        this.updateSendButton(true);
 
         // Show typing indicator
         this.typingIndicator.style.display = 'block';
@@ -63,10 +109,14 @@ class MobileChat {
                 this.addErrorMessage('Error connecting to server. Please try again.');
             }
         } finally {
-            // Re-enable input
-            this.toggleInputState(false);
-            this.typingIndicator.style.display = 'none';
-            this.messageInput.focus();
+            // Reset state (only if not already reset by handleStop)
+            if (this.isGenerating) {
+                this.isGenerating = false;
+                this.toggleInputState(false);
+                this.typingIndicator.style.display = 'none';
+                this.updateSendButton(false);
+                this.messageInput.focus();
+            }
         }
     }
 
@@ -79,7 +129,6 @@ class MobileChat {
 
         // Setup abort controller
         this.abortController = new AbortController();
-        this.isGenerating = true;
 
         // API call
         const response = await fetch('/api/v1/chat', {
@@ -95,7 +144,6 @@ class MobileChat {
         // Handle streaming response
         await this.handleStream(response);
 
-        this.isGenerating = false;
         this.abortController = null;
     }
 
@@ -109,6 +157,11 @@ class MobileChat {
 
         // Read stream chunks
         while (true) {
+            // Check if user stopped streaming
+            if (this.shouldStopStreaming) {
+                break;
+            }
+
             const { done, value } = await reader.read();
             if (done) break;
 
@@ -174,7 +227,7 @@ class MobileChat {
 
     toggleInputState(disabled) {
         this.messageInput.disabled = disabled;
-        this.sendBtn.disabled = disabled;
+        // DON'T disable send button - it needs to work as stop button during streaming
 
         if (disabled) {
             this.messageInput.parentElement.classList.add('disabled');
