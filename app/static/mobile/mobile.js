@@ -122,9 +122,8 @@ class MobileChat {
                 unlockUtterance.volume = 0;
                 unlockUtterance.rate = 10; // Very fast
                 window.speechSynthesis.speak(unlockUtterance);
-                console.log('🔓 Audio context unlocked for mobile TTS');
             } catch (e) {
-                console.log('Audio unlock failed:', e);
+                console.error('TTS audio unlock failed:', e);
             }
         }
 
@@ -457,16 +456,7 @@ class MobileChat {
 
     // TTS Functions - Ported from desktop app.js (lines 849-903)
     speak(text) {
-        console.log('🔊 speak() called:', {
-            isMuted: this.isMuted,
-            hasSpeechSynthesis: !!window.speechSynthesis,
-            textLength: text.length
-        });
-
-        if (this.isMuted || !window.speechSynthesis) {
-            console.log('🔇 speak() returning early:', this.isMuted ? 'muted' : 'no speechSynthesis');
-            return;
-        }
+        if (this.isMuted || !window.speechSynthesis) return;
 
         const utterance = new SpeechSynthesisUtterance(text);
 
@@ -475,7 +465,6 @@ class MobileChat {
 
         // Get available voices
         const voices = window.speechSynthesis.getVoices();
-        console.log('🔊 Available voices:', voices.length, 'Selected lang:', selectedLang);
 
         // Find the best voice for the selected language
         // Try to find a voice that matches the exact locale (e.g., es-ES)
@@ -504,7 +493,6 @@ class MobileChat {
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
-        console.log('🔊 Speaking with voice:', voice?.name || 'default', 'lang:', selectedLang);
         window.speechSynthesis.speak(utterance);
     }
 
@@ -852,16 +840,9 @@ class MobileChat {
         }
 
         // Speak (matching desktop timing - after full message, only if not stopped and not muted)
-        console.log('🔊 TTS Check:', {
-            isMuted: this.isMuted,
-            shouldStopStreaming: this.shouldStopStreaming,
-            textLength: cleanBotText.length,
-            willSpeak: !this.isMuted && !this.shouldStopStreaming && cleanBotText.length > 0
-        });
 
         if (!this.isMuted && !this.shouldStopStreaming && cleanBotText.length > 0) {
             try {
-                console.log('🔊 Calling speak() with text:', cleanBotText.substring(0, 50) + '...');
                 this.speak(cleanBotText);
             } catch (e) {
                 console.warn('TTS Error:', e);
