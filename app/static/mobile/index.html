@@ -52,6 +52,15 @@
         </div>
     </main>
 
+    <!-- Image Preview (appears above composer when image selected) -->
+    <div id="mobileImagePreview" class="image-preview" style="display: none;">
+        <img id="mobilePreviewImg" src="" alt="Preview">
+        <span id="mobileImageName"></span>
+        <button type="button" class="remove-image-btn" id="removeImageBtn" aria-label="Remove Image">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+
     <!-- Composer Container -->
     <div class="composer-container">
         <div class="input-wrapper">
@@ -62,6 +71,207 @@
                 autocomplete="off">
             <button class="send-btn" id="sendBtn" aria-label="Send">
                 <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Action Menu (Bottom Sheet) -->
+    <div class="action-menu" id="actionMenu">
+        <div class="menu-backdrop"></div>
+        <div class="menu-content">
+            <div class="menu-header">
+                <span>Actions</span>
+                <button class="menu-close" aria-label="Close">&times;</button>
+            </div>
+            <button class="menu-item" id="menuLanguage">
+                <i class="fas fa-language"></i>
+                <span>Language</span>
+                <span class="menu-value" id="currentLang">English</span>
+                <i class="fas fa-chevron-right"></i>
+            </button>
+            <button class="menu-item" id="menuTTS">
+                <i class="fas fa-volume-mute" id="ttsIcon"></i>
+                <span id="ttsLabel">Unmute TTS</span>
+            </button>
+            <button class="menu-item" id="menuUpload">
+                <i class="fas fa-paperclip"></i>
+                <span>Upload Image</span>
+            </button>
+            <button class="menu-item" id="menuSupport">
+                <i class="fas fa-headset"></i>
+                <span>Contact Support</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Language Sub-Menu -->
+    <div class="action-menu" id="languageMenu">
+        <div class="menu-backdrop"></div>
+        <div class="menu-content">
+            <div class="menu-header">
+                <button class="back-btn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+                <span>Select Language</span>
+            </div>
+            <button class="menu-item lang-option" data-lang="en-US">
+                <span>English</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="es-ES">
+                <span>Spanish</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="fr-FR">
+                <span>French</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="de-DE">
+                <span>German</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="zh-CN">
+                <span>Chinese</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="ko-KR">
+                <span>Korean</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="ja-JP">
+                <span>Japanese</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="pt-BR">
+                <span>Portuguese</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="it-IT">
+                <span>Italian</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="ru-RU">
+                <span>Russian</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="ar-SA">
+                <span>Arabic</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="hi-IN">
+                <span>Hindi</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="vi-VN">
+                <span>Vietnamese</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="pl-PL">
+                <span>Polish</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+            <button class="menu-item lang-option" data-lang="nl-NL">
+                <span>Dutch</span>
+                <i class="fas fa-check lang-check"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Hidden File Input -->
+    <input type="file" id="mobileImageInput" accept="image/*" style="display: none;">
+
+    <!-- Support Modal -->
+    <div id="mobileSupportModal" class="support-modal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>Contact Support</span>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Option Selector (default view) -->
+                <div id="mobileSupportOptions">
+                    <button class="support-option" id="emailSupport">
+                        <i class="fas fa-envelope"></i>
+                        <span>Email Support</span>
+                    </button>
+                    <button class="support-option" id="callSupport">
+                        <i class="fas fa-phone"></i>
+                        <span>Call Support</span>
+                    </button>
+                </div>
+
+                <!-- Email Form (hidden, shown after selecting Email) -->
+                <div id="mobileEmailForm" style="display: none;">
+                    <p style="margin-bottom: 16px; color: var(--text-secondary); font-size: 14px;">
+                        Fill out the form below and we'll get back to you shortly.
+                    </p>
+                    <div style="margin-bottom: 12px;">
+                        <input type="text" id="mobileSupportName" placeholder="Your Name"
+                            style="width: 100%; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <input type="email" id="mobileSupportEmail" placeholder="Your Email"
+                            style="width: 100%; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <textarea id="mobileSupportSummary" placeholder="Describe your issue..." rows="4"
+                            style="width: 100%; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px; resize: vertical;"></textarea>
+                    </div>
+                    <button class="support-option" id="submitEmailBtn" style="margin-bottom: 12px;">
+                        <i class="fas fa-paper-plane"></i>
+                        <span>Submit Request</span>
+                    </button>
+                    <button class="support-option"
+                        onclick="document.getElementById('mobileEmailForm').style.display='none'; document.getElementById('mobileSupportOptions').style.display='block';"
+                        style="background: transparent; border: 1px solid var(--border-color);">
+                        <i class="fas fa-arrow-left"></i>
+                        <span>Back</span>
+                    </button>
+                </div>
+
+                <!-- Call Info (hidden, shown after selecting Call) -->
+                <div id="mobileCallInfo" style="display: none; text-align: center;">
+                    <div style="margin-bottom: 20px;">
+                        <i class="fas fa-phone-alt"
+                            style="font-size: 3em; color: #48bb78; margin-bottom: 10px; display: block;"></i>
+                        <div style="font-size: 1.2em; font-weight: 600; margin-bottom: 4px;">+1 (555) 123-4567</div>
+                        <div style="font-size: 0.9em; color: var(--text-secondary);">Available 24/7</div>
+                    </div>
+                    <a href="tel:+15551234567" class="support-option" id="callNowBtn"
+                        style="text-decoration: none; display: flex; margin-bottom: 12px;">
+                        <i class="fas fa-phone"></i>
+                        <span>Call Now</span>
+                    </a>
+                    <button class="support-option"
+                        onclick="document.getElementById('mobileCallInfo').style.display='none'; document.getElementById('mobileSupportOptions').style.display='block';"
+                        style="background: transparent; border: 1px solid var(--border-color);">
+                        <i class="fas fa-arrow-left"></i>
+                        <span>Back</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal (Popup Window) -->
+    <div id="mobileSuccessModal" class="support-modal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="text-align: center; justify-content: center; align-items: center;">
+            <div style="margin-bottom: 20px;">
+                <i class="fas fa-check-circle" style="font-size: 4em; color: #48bb78; margin-bottom: 16px;"></i>
+                <h3 style="margin: 0 0 8px 0; color: #ececec; font-size: 1.25em;">Request Submitted!</h3>
+                <p style="margin: 0; color: var(--text-secondary); font-size: 0.9em;">Your support ticket has been
+                    created.</p>
+            </div>
+            <div
+                style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; margin-bottom: 24px; width: 100%;">
+                <span style="display: block; font-size: 0.8em; color: var(--text-secondary); margin-bottom: 4px;">TICKET
+                    ID</span>
+                <span id="successTicketId"
+                    style="font-family: monospace; font-size: 1.2em; color: var(--accent-primary); font-weight: 600;">#12345</span>
+            </div>
+            <button class="support-option" id="closeSuccessBtn"
+                style="justify-content: center; background: var(--accent-primary); border-color: var(--accent-primary); color: #fff;">
+                <span>Done</span>
             </button>
         </div>
     </div>
