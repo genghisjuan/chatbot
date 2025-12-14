@@ -112,12 +112,41 @@ class MobileChat {
         this.typingIndicator.style.display = 'none';
     }
 
-    async handleSend() {
-        const text = this.messageInput.value.trim();
+    async sendMessage(text, file) {
+        // MOBILE TTS FIX: Unlock speechSynthesis on user interaction
+        // Mobile browsers require audio to be triggered directly by user gesture
+        if (!this.isMuted && window.speechSynthesis) {
+            try {
+                // Play a silent utterance to activate audio context
+                const unlockUtterance = new SpeechSynthesisUtterance(' ');
+                unlockUtterance.volume = 0;
+                unlockUtterance.rate = 10; // Very fast
+                window.speechSynthesis.speak(unlockUtterance);
+                console.log('🔓 Audio context unlocked for mobile TTS');
+            } catch (e) {
+                console.log('Audio unlock failed:', e);
+            }
+        }
+
+        // Create an AbortController for this request
+        this.abortController = new AbortController();
 
         // Prevent empty sends or double-sends
-        if (!text || this.isGenerating) return;
+        if (!text && !file) return;
 
+        // Clear input and file preview
+        this.messageInput.value = '';
+        this.clearImagePreview();
+
+        // Add user message to UI
+        this.addUserMessage(text, file);
+
+        // Handle stream
+        await this.handleStream(text, file);
+    }
+
+    async handleSend() {
+        const text = this.messageInput.value.trim();
         // Clear input immediately
         this.messageInput.value = '';
 
@@ -428,7 +457,16 @@ class MobileChat {
 
     // TTS Functions - Ported from desktop app.js (lines 849-903)
     speak(text) {
-        if (this.isMuted || !window.speechSynthesis) return;
+        console.log('🔊 speak() called:', {
+            isMuted: this.isMuted,
+            hasSpeechSynthesis: !!window.speechSynthesis,
+            textLength: text.length
+        });
+
+        if (this.isMuted || !window.speechSynthesis) {
+            console.log('🔇 speak() returning early:', this.isMuted ? 'muted' : 'no speechSynthesis');
+            return;
+        }
 
         const utterance = new SpeechSynthesisUtterance(text);
 
@@ -437,6 +475,7 @@ class MobileChat {
 
         // Get available voices
         const voices = window.speechSynthesis.getVoices();
+        console.log('🔊 Available voices:', voices.length, 'Selected lang:', selectedLang);
 
         // Find the best voice for the selected language
         // Try to find a voice that matches the exact locale (e.g., es-ES)
@@ -465,6 +504,7 @@ class MobileChat {
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
+        console.log('🔊 Speaking with voice:', voice?.name || 'default', 'lang:', selectedLang);
         window.speechSynthesis.speak(utterance);
     }
 
@@ -812,8 +852,16 @@ class MobileChat {
         }
 
         // Speak (matching desktop timing - after full message, only if not stopped and not muted)
+        console.log('🔊 TTS Check:', {
+            isMuted: this.isMuted,
+            shouldStopStreaming: this.shouldStopStreaming,
+            textLength: cleanBotText.length,
+            willSpeak: !this.isMuted && !this.shouldStopStreaming && cleanBotText.length > 0
+        });
+
         if (!this.isMuted && !this.shouldStopStreaming && cleanBotText.length > 0) {
             try {
+                console.log('🔊 Calling speak() with text:', cleanBotText.substring(0, 50) + '...');
                 this.speak(cleanBotText);
             } catch (e) {
                 console.warn('TTS Error:', e);
@@ -1046,12 +1094,9 @@ class MobileChat {
         // Toggle Logic (exact desktop behavior)
         const isActive = btn.classList.contains('active-up') || btn.classList.contains('active-down');
 
-        let newRating = rating;
-
         if (isActive) {
-            // Toggle Off
+            // Toggle Off - just update UI, don't send to backend
             btn.classList.remove('active-up', 'active-down');
-            newRating = 'none';
 
             // Remove from storage
             const ratings = this.loadRatings();
@@ -1059,19 +1104,21 @@ class MobileChat {
                 delete ratings[msgId];
                 sessionStorage.setItem('message_ratings', JSON.stringify(ratings));
             }
-        } else {
-            // Toggle On or Switch
-            btn.classList.add(rating === 'up' ? 'active-up' : 'active-down');
-            otherBtn.classList.remove('active-up', 'active-down');
-
-            // Save new rating
-            this.saveRating(msgId, rating);
+            // Return early - no backend call for deselecting
+            return;
         }
+
+        // Toggle On or Switch
+        btn.classList.add(rating === 'up' ? 'active-up' : 'active-down');
+        otherBtn.classList.remove('active-up', 'active-down');
+
+        // Save new rating
+        this.saveRating(msgId, rating);
 
         try {
             const payload = {
                 message_id: msgId,
-                rating: newRating,
+                rating: rating, // 'up' or 'down' only
                 user_query: wrapper.dataset.userQuery || '',
                 bot_response: wrapper.dataset.botResponse || ''
             };

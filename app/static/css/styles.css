@@ -22,6 +22,12 @@
     --modal-text: #ffffff;
     --card-bg: #1a1a28;
     --accent-color: #667eea;
+
+    /* Motion tokens - Phase 1A */
+    --juna-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --juna-dur-micro: 100ms;
+    --juna-dur-overlay: 200ms;
+    --juna-dur-drawer: 280ms;
 }
 
 /* Smooth transitions */
@@ -190,13 +196,19 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    transition: all 0.15s ease;
+    transition: background var(--juna-dur-micro) var(--juna-ease),
+        color var(--juna-dur-micro) var(--juna-ease),
+        transform var(--juna-dur-micro) var(--juna-ease);
     line-height: 1.4;
 }
 
 .history-item:hover {
     background: rgba(255, 255, 255, 0.04);
     color: #e5e7eb;
+}
+
+.history-item:active {
+    transform: scale(0.98);
 }
 
 .history-item.active {
@@ -538,13 +550,17 @@ button {
     cursor: pointer;
     font-weight: 500;
     font-size: 0.9em;
-    transition: all 0.15s ease;
+    transition: background var(--juna-dur-micro) var(--juna-ease),
+        transform var(--juna-dur-micro) var(--juna-ease);
 }
 
 button:hover {
     background: #5a6fd6;
-    transform: none;
-    box-shadow: none;
+    transform: translateY(-1px);
+}
+
+button:active {
+    transform: translateY(0);
 }
 
 #sendBtn {
@@ -1042,4 +1058,9 @@ input:checked+.slider:before {
 .history-list {
     padding: 0 !important;
     margin: 0 !important;
+}
+
+/* Utility Classes */
+.hidden {
+    display: none !important;
 }

@@ -27,6 +27,12 @@
     --input-bg: #1a1a28;
     --input-border: #1e1e2e;
     --card-bg: #1a1a28;
+
+    /* Motion tokens - Phase 1A */
+    --juna-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --juna-dur-micro: 100ms;
+    --juna-dur-overlay: 200ms;
+    --juna-dur-drawer: 280ms;
 }
 
 /* Reset & Base */
@@ -141,7 +147,7 @@ body {
 .chat-messages {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
 }
 
 /* Messages */
@@ -327,7 +333,9 @@ body.drawer-open {
     display: flex;
     align-items: center;
     gap: 8px;
-    transition: background 0.2s ease;
+    transition: background var(--juna-dur-micro) var(--juna-ease),
+        color var(--juna-dur-micro) var(--juna-ease),
+        transform var(--juna-dur-micro) var(--juna-ease);
     min-height: 44px;
 }
 
@@ -335,6 +343,10 @@ body.drawer-open {
 .drawer-list-item:active {
     background: rgba(255, 255, 255, 0.04);
     color: #e5e7eb;
+}
+
+.drawer-list-item:active {
+    transform: scale(0.98);
 }
 
 .drawer-list-item.active {
@@ -353,8 +365,8 @@ body.drawer-open {
 
 /* Paragraphs */
 .message-wrapper.bot .message p {
-    margin: 0 0 14px 0;
-    line-height: 1.7;
+    margin: 0 0 10px 0;
+    line-height: 1.5;
 }
 
 .message-wrapper.bot .message p:last-child {
@@ -556,10 +568,10 @@ body.drawer-open {
 
 .message {
     max-width: 80%;
-    padding: 14px 16px;
+    padding: 11px 13px;
     border-radius: 12px;
-    font-size: 15px;
-    line-height: 1.7;
+    font-size: 14px;
+    line-height: 1.5;
 }
 
 .message-wrapper.bot .message {
@@ -609,12 +621,15 @@ body.drawer-open {
     cursor: pointer;
     flex-shrink: 0;
     border-radius: 50%;
-    transition: background-color 0.2s ease, opacity 0.2s ease;
+    transition: background-color var(--juna-dur-micro) var(--juna-ease),
+        opacity var(--juna-dur-micro) var(--juna-ease),
+        transform var(--juna-dur-micro) var(--juna-ease);
 }
 
 .pill-btn:active {
     background: rgba(255, 255, 255, 0.1);
     opacity: 0.8;
+    transform: scale(0.94);
 }
 
 /* Input (Flexible, Dominant) */
@@ -648,11 +663,13 @@ body.drawer-open {
     justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.2s ease;
+    transition: background var(--juna-dur-micro) var(--juna-ease),
+        transform var(--juna-dur-micro) var(--juna-ease),
+        opacity var(--juna-dur-micro) var(--juna-ease);
 }
 
 .pill-send-btn:active {
-    transform: scale(0.92);
+    transform: scale(0.94);
     opacity: 0.9;
 }
 
@@ -856,14 +873,6 @@ body.drawer-open {
     transform: scale(0.96);
 }
 
-/* Specific TTS Icon Override to undo generic !important if possible, 
-   or at least provide a default that matches 'Muted' state if JS fails */
-#ttsIcon {
-    /* If JS sets style, we want it to show. 
-       But .menu-item i:first-child has !important.
-       We can't easily fix this without removing !important from line 773. 
-       We will accept this limitation or try to target ID. */
-}
 
 /* Screen Reader Only Utility */
 .sr-only {
