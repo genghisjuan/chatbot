@@ -3,15 +3,30 @@
    ============================================ */
 
 /* CSS Variables - JUNA Design System */
+/* CSS Variables - JUNA Design System (Desktop Parity 1:1) */
 :root {
-    --bg-primary: #0B0F19;
-    --bg-secondary: #0F1424;
-    --text-primary: #FFFFFF;
-    --text-secondary: rgba(255, 255, 255, 0.7);
+    /* Mapped to Desktop styles.css */
+    --bg-primary: #0d0d14;
+    /* was --main-bg */
+    --bg-secondary: #12121a;
+    /* was --sidebar-bg */
+    --text-primary: #ffffff;
+    /* was --text-color */
+    --text-secondary: #6b7280;
+    /* was --text-muted */
     --accent-primary: #667eea;
-    --border-color: rgba(255, 255, 255, 0.1);
-    --message-bot-bg: #1a1f2e;
+    /* was --accent-color */
+    --border-color: #1e1e2e;
+    /* was --glass-border */
+    --message-bot-bg: #12121a;
+    /* Desktop .bot-message bg */
     --message-user-bg: #667eea;
+    /* was --user-bg */
+
+    /* Additional Desktop Tokens */
+    --input-bg: #1a1a28;
+    --input-border: #1e1e2e;
+    --card-bg: #1a1a28;
 }
 
 /* Reset & Base */
@@ -28,10 +43,12 @@ body {
 }
 
 body {
-    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    /* Desktop Font */
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 16px;
+    font-size: 13px;
+    /* Desktop Base Size */
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -45,7 +62,7 @@ body {
 
 /* Header */
 .mobile-header {
-    background: var(--bg-secondary);
+    background: var(--bg-primary);
     border-bottom: 1px solid var(--border-color);
     padding: 16px 20px;
     flex-shrink: 0;
@@ -171,7 +188,7 @@ body {
     width: 75%;
     max-width: 280px;
     height: 100%;
-    background: var(--bg-primary);
+    background: var(--bg-secondary);
     z-index: 1000;
     transition: left 0.3s ease;
     overflow-y: auto;
@@ -563,8 +580,10 @@ body.drawer-open {
     display: flex;
     align-items: center;
     gap: 8px;
-    background: var(--bg-primary);
-    border: 2px solid var(--border-color);
+    background: var(--input-bg);
+    /* Desktop parity */
+    border: 1px solid var(--border-color);
+    /* Desktop parity (1px) */
     border-radius: 999px;
     padding: 6px 6px 6px 12px;
 }
@@ -707,9 +726,9 @@ body.drawer-open {
     left: 16px !important;
     right: auto !important;
     width: 250px !important;
-    background: #232323 !important;
-    /* ChatGPT dark gray */
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    background: var(--card-bg) !important;
+    /* Desktop parity */
+    border: 1px solid var(--border-color) !important;
     border-radius: 12px !important;
     padding: 6px !important;
     z-index: 2000;
