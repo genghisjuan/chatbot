@@ -718,18 +718,18 @@ class MobileChat {
         }
 
         // Handle streaming response
-        await this.handleStream(response);
+        await this.handleStream(response, text);
 
         // State cleanup happens in handleSend finally block
     }
 
-    async handleStream(response) {
+    async handleStream(response, text) {
         console.log('🌊 handleStream started');
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
 
-        // Create bot message bubble
-        const botElement = this.addBotMessage();
+        // Create bot message bubble (pass text as userQuery context)
+        const botElement = this.addBotMessage('', null, text);
         let botText = '';
         let chunkCount = 0;
 
@@ -798,6 +798,14 @@ class MobileChat {
             // Update conversation history
             this.conversationHistory.push({ role: "assistant", content: cleanBotText });
 
+            // Update dataset for feedback analytics (Desktop Parity)
+            const wrapper = botElement.closest('.message-wrapper');
+            if (wrapper) {
+                // Remove suggestions for analytics purity
+                wrapper.dataset.botResponse = cleanBotText;
+                wrapper.dataset.userQuery = text || ''; // Ensure context is saved
+            }
+
             // Save updated conversation (desktop parity)
             this.saveConversation();
             this.updateSavedConversation();
@@ -843,7 +851,7 @@ class MobileChat {
         this.scrollToBottom();
     }
 
-    addBotMessage(content = '', id = null) {
+    addBotMessage(content = '', id = null, userQuery = '') {
         const wrapper = document.createElement('div');
         wrapper.className = 'message-wrapper bot';
 
@@ -860,6 +868,19 @@ class MobileChat {
         // Store message ID (desktop parity)
         const msgId = id || Date.now().toString();
         wrapper.dataset.messageId = msgId;
+
+        // Store context for analytics (Desktop Parity)
+        if (content) wrapper.dataset.botResponse = content;
+
+        // If userQuery provided, store it. If not, try to get from history (restoration case)
+        if (userQuery) {
+            wrapper.dataset.userQuery = userQuery;
+        } else {
+            const lastUserMsg = this.conversationHistory.filter(m => m.role === 'user').pop();
+            if (lastUserMsg) {
+                wrapper.dataset.userQuery = lastUserMsg.content;
+            }
+        }
 
         wrapper.appendChild(message);
 
