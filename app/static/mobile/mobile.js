@@ -14,6 +14,10 @@ class MobileChat {
         this.selectedLanguage = 'en-US'; // Default
         this.isMuted = true; // Default muted (desktop default)
 
+        // Voice recognition state (ported from desktop)
+        this.recognition = null;
+        this.isListening = false;
+
         // Image upload state
         this.selectedFile = null;
 
@@ -35,6 +39,9 @@ class MobileChat {
         // Load TTS voices (matching desktop)
         this.loadTTSVoices();
 
+        // Setup voice recognition (desktop parity)
+        this.setupVoiceRecognition();
+
         // Unified send/stop button click handler
         this.sendBtn.addEventListener('click', () => {
             if (this.isGenerating) {
@@ -50,6 +57,17 @@ class MobileChat {
                 e.preventDefault();
                 this.handleSend();
             }
+        });
+
+        // Microphone button (desktop parity)
+        document.getElementById('micBtn')?.addEventListener('click', () => {
+            this.toggleVoice();
+        });
+
+        // Menu button (hamburger) - no-op for now (no drawer implemented)
+        document.getElementById('menuBtn')?.addEventListener('click', () => {
+            // Placeholder for future menu/drawer functionality
+            console.log('Menu button clicked');
         });
 
         // Setup action menu and handlers
@@ -344,6 +362,49 @@ class MobileChat {
                 window.speechSynthesis.onvoiceschanged = () => {
                     window.speechSynthesis.getVoices();
                 };
+            }
+        }
+    }
+
+    // Voice Recognition - Ported from desktop app.js (lines 821-847)
+    setupVoiceRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            try {
+                this.recognition = new SpeechRecognition();
+                this.recognition.continuous = false;
+                this.recognition.interimResults = false;
+                this.recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    this.messageInput.value = transcript;
+                    // Desktop auto-sends after transcription
+                    this.handleSend();
+                };
+                this.recognition.onend = () => {
+                    this.isListening = false;
+                    document.getElementById('micBtn').style.color = '#718096';
+                };
+            } catch (e) {
+                console.warn('Speech recognition not available:', e);
+            }
+        }
+    }
+
+    toggleVoice() {
+        if (!this.recognition) {
+            alert('Speech recognition not supported on this device');
+            return;
+        }
+        if (this.isListening) {
+            this.recognition.stop();
+        } else {
+            try {
+                this.recognition.start();
+                this.isListening = true;
+                document.getElementById('micBtn').style.color = '#e53e3e';
+            } catch (e) {
+                console.warn('Failed to start recognition:', e);
+                this.isListening = false;
             }
         }
     }

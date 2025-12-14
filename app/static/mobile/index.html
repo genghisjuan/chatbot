@@ -24,7 +24,14 @@
     <!-- Header -->
     <header class="mobile-header">
         <div class="header-content">
-            <h1 class="brand">JUNA</h1>
+            <button type="button" class="menu-btn" id="menuBtn" aria-label="Menu">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
             <div class="status-indicator">
                 <span class="status-dot"></span>
                 <span class="status-text">Online</span>
@@ -63,13 +70,15 @@
 
     <!-- Composer Container -->
     <div class="composer-container">
-        <div class="input-wrapper">
-            <button class="action-btn" id="actionBtn" aria-label="Actions">
+        <div class="composer-pill">
+            <button class="pill-btn" id="actionBtn" aria-label="Actions">
                 <i class="fas fa-plus"></i>
             </button>
-            <input type="text" id="messageInput" class="message-input" placeholder="Type a message..."
-                autocomplete="off">
-            <button class="send-btn" id="sendBtn" aria-label="Send">
+            <input type="text" id="messageInput" class="pill-input" placeholder="Ask anything" autocomplete="off">
+            <button class="pill-btn" id="micBtn" aria-label="Voice Input">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <button class="pill-send-btn" id="sendBtn" aria-label="Send">
                 <i class="fas fa-paper-plane"></i>
             </button>
         </div>
