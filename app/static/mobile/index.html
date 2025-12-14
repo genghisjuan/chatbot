@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>JUNA Assistant - Mobile</title>
@@ -21,6 +22,58 @@
 </head>
 
 <body>
+    <!-- Mobile Drawer Backdrop -->
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
+
+    <!-- Mobile Drawer (Sidebar Content) -->
+    <div class="mobile-drawer" id="mobileDrawer">
+        <!-- Drawer Header with Close Button -->
+        <div class="drawer-header">
+            <button type="button" class="drawer-close-btn" id="drawerCloseBtn" aria-label="Close menu">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <!-- Desktop Sidebar Content (Reused) -->
+        <div class="drawer-content">
+            <!-- JUNA Logo -->
+            <div class="drawer-brand">
+                <img src="/static/logo.png" alt="JUNA" style="max-width: 90%; height: auto;">
+            </div>
+
+            <!-- New Chat Button -->
+            <button class="drawer-new-chat-btn" id="drawerNewChatBtn" aria-label="Start New Chat">
+                <i class="fas fa-plus"></i> New Chat
+            </button>
+
+            <!-- Trending Topics -->
+            <div class="drawer-section">
+                <div class="drawer-section-label" role="button" tabindex="0" aria-expanded="false"
+                    aria-controls="drawerTrendingList" id="drawerTrendingToggle">
+                    <i class="fas fa-chart-line"></i>
+                    <span style="flex: 1;">Trending Topics</span>
+                    <i class="fas fa-chevron-down" id="drawerTrendingChevron" style="font-size: 0.8em;"></i>
+                </div>
+                <div class="drawer-section-list" id="drawerTrendingList">
+                    <div class="drawer-list-item">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Conversations History -->
+            <div class="drawer-section">
+                <div class="drawer-section-label" role="button" tabindex="0" aria-expanded="false"
+                    aria-controls="drawerConversationsList" id="drawerConversationsToggle">
+                    <i class="fas fa-comments"></i>
+                    <span style="flex: 1;">Conversations</span>
+                    <i class="fas fa-chevron-down" id="drawerConversationsChevron" style="font-size: 0.8em;"></i>
+                </div>
+                <div class="drawer-section-list" id="drawerConversationsList">
+                    <div class="drawer-list-item">No conversations yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Header -->
     <header class="mobile-header">
         <div class="header-content">

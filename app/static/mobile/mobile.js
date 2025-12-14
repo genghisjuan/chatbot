@@ -5,7 +5,7 @@
 
 class MobileChat {
     constructor() {
-        this.conversationHistory = [];
+        this.conversationHistory = this.restoreConversation() || [];
         this.isGenerating = false;
         this.abortController = null;
         this.shouldStopStreaming = false; // Flag to break stream loop
@@ -64,10 +64,29 @@ class MobileChat {
             this.toggleVoice();
         });
 
-        // Menu button (hamburger) - no-op for now (no drawer implemented)
+        // Menu button (hamburger) - open drawer
         document.getElementById('menuBtn')?.addEventListener('click', () => {
-            // Placeholder for future menu/drawer functionality
-            console.log('Menu button clicked');
+            this.toggleDrawer();
+        });
+
+        // Restore conversation UI if there's an active conversation (desktop parity)
+        if (this.conversationHistory.length > 0) {
+            this.chatMessages.innerHTML = '';
+            this.conversationHistory.forEach(msg => {
+                if (msg.role === 'user') {
+                    this.addUserMessage(msg.content);
+                } else if (msg.role === 'assistant') {
+                    this.addBotMessage(msg.content, msg.id);
+                }
+            });
+            this.scrollToBottom();
+        }
+
+        // Stop speech on page unload/refresh (desktop parity)
+        window.addEventListener('beforeunload', () => {
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
         });
 
         // Setup action menu and handlers
@@ -102,6 +121,16 @@ class MobileChat {
 
         // Update conversation history
         this.conversationHistory.push({ role: "user", content: text });
+
+        // Save to sessionStorage (desktop parity)
+        this.saveConversation();
+
+        // If this is the first USER message, create conversation in history (desktop parity)
+        const currentId = sessionStorage.getItem('current_conversation_id');
+        const userMessageCount = this.conversationHistory.filter(m => m.role === 'user').length;
+        if (!currentId && userMessageCount === 1) {
+            this.saveConversationToHistory(text);
+        }
 
         // Disable input during generation
         this.toggleInputState(true);
@@ -639,6 +668,10 @@ class MobileChat {
         // Update conversation history
         this.conversationHistory.push({ role: "assistant", content: cleanBotText });
 
+        // Save updated conversation (desktop parity)
+        this.saveConversation();
+        this.updateSavedConversation();
+
         // Speak (matching desktop timing - after full message)
         if (!this.isMuted) {
             try {
@@ -679,13 +712,18 @@ class MobileChat {
         this.scrollToBottom();
     }
 
-    addBotMessage() {
+    addBotMessage(content = '', id = null) {
         const wrapper = document.createElement('div');
         wrapper.className = 'message-wrapper bot';
 
         const message = document.createElement('div');
         message.className = 'message';
-        message.textContent = ''; // Will be filled by streaming
+        message.textContent = content; // Set content if provided, empty for streaming
+
+        // Store message ID if provided (for restoration)
+        if (id) {
+            wrapper.dataset.messageId = id;
+        }
 
         wrapper.appendChild(message);
         this.chatMessages.appendChild(wrapper);
@@ -730,6 +768,263 @@ class MobileChat {
 
     closeSuccessModal() {
         document.getElementById('mobileSuccessModal').classList.remove('show');
+    }
+
+    // ============================================
+    // Conversation Persistence Methods (Desktop Parity)
+    // ============================================
+
+    restoreConversation() {
+        try {
+            const raw = sessionStorage.getItem('current_conversation_history');
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.filter(item =>
+                item &&
+                typeof item === 'object' &&
+                typeof item.role === 'string' &&
+                typeof item.content === 'string'
+            );
+        } catch (e) {
+            console.error("Failed to restore conversation:", e);
+            return [];
+        }
+    }
+
+    saveConversation() {
+        sessionStorage.setItem('current_conversation_history', JSON.stringify(this.conversationHistory));
+    }
+
+    saveConversationToHistory(firstMessage) {
+        const conversations = JSON.parse(localStorage.getItem('conversation_history_list') || '[]');
+        const newConv = {
+            id: Date.now(),
+            firstMessage: firstMessage.substring(0, 50),
+            timestamp: new Date().toISOString(),
+            history: this.conversationHistory
+        };
+
+        conversations.unshift(newConv);
+        if (conversations.length > 5) conversations.splice(5);
+
+        localStorage.setItem('conversation_history_list', JSON.stringify(conversations));
+        sessionStorage.setItem('current_conversation_id', newConv.id);
+    }
+
+    updateSavedConversation() {
+        const currentId = sessionStorage.getItem('current_conversation_id');
+        if (!currentId) return;
+
+        const conversations = JSON.parse(localStorage.getItem('conversation_history_list') || '[]');
+        const index = conversations.findIndex(c => c.id == currentId);
+
+        if (index !== -1) {
+            conversations[index].history = this.conversationHistory;
+            conversations[index].timestamp = new Date().toISOString();
+            localStorage.setItem('conversation_history_list', JSON.stringify(conversations));
+        }
+    }
+
+    // ============================================
+    // Mobile Drawer Methods (Desktop Parity)
+    // ============================================
+
+    toggleDrawer() {
+        const drawer = document.getElementById('mobileDrawer');
+        const backdrop = document.getElementById('drawerBackdrop');
+        const isOpen = drawer.classList.contains('active');
+
+        if (isOpen) {
+            this.closeDrawer();
+        } else {
+            this.openDrawer();
+        }
+    }
+
+    openDrawer() {
+        const drawer = document.getElementById('mobileDrawer');
+        const backdrop = document.getElementById('drawerBackdrop');
+
+        drawer.classList.add('active');
+        backdrop.classList.add('active');
+        document.body.classList.add('drawer-open');
+
+        // Setup drawer event listeners if not already done
+        if (!this.drawerListenersInitialized) {
+            this.setupDrawerListeners();
+            this.drawerListenersInitialized = true;
+        }
+
+        // Populate drawer content
+        this.renderDrawerTrendingTopics();
+        this.renderDrawerConversations();
+    }
+
+    closeDrawer() {
+        const drawer = document.getElementById('mobileDrawer');
+        const backdrop = document.getElementById('drawerBackdrop');
+
+        drawer.classList.remove('active');
+        backdrop.classList.remove('active');
+        document.body.classList.remove('drawer-open');
+    }
+
+    setupDrawerListeners() {
+        // Close button
+        document.getElementById('drawerCloseBtn')?.addEventListener('click', () => {
+            this.closeDrawer();
+        });
+
+        // Backdrop click
+        document.getElementById('drawerBackdrop')?.addEventListener('click', () => {
+            this.closeDrawer();
+        });
+
+        // New Chat button
+        document.getElementById('drawerNewChatBtn')?.addEventListener('click', () => {
+            this.drawerNewChat();
+        });
+
+        // Trending Topics toggle
+        document.getElementById('drawerTrendingToggle')?.addEventListener('click', () => {
+            this.toggleDrawerSection('drawerTrendingList', 'drawerTrendingToggle');
+        });
+
+        // Conversations toggle
+        document.getElementById('drawerConversationsToggle')?.addEventListener('click', () => {
+            this.toggleDrawerSection('drawerConversationsList', 'drawerConversationsToggle');
+        });
+    }
+
+    toggleDrawerSection(listId, toggleId) {
+        const list = document.getElementById(listId);
+        const toggle = document.getElementById(toggleId);
+
+        if (list && toggle) {
+            const isExpanded = toggle.getAttribute('aria-expanded') === 'true';
+            toggle.setAttribute('aria-expanded', !isExpanded);
+            list.classList.toggle('hidden');
+        }
+    }
+
+    // Desktop Parity: New Chat (uses same logic as desktop startNewChat)
+    drawerNewChat() {
+        // Stop any ongoing speech
+        if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+        this.clearConversation();
+        this.closeDrawer();
+        location.reload();
+    }
+
+    clearConversation() {
+        sessionStorage.removeItem('current_conversation_history');
+        sessionStorage.removeItem('current_conversation_id');
+        sessionStorage.removeItem('message_ratings');
+        this.conversationHistory = [];
+    }
+
+    // Desktop Parity: Render Trending Topics (uses same logic as desktop renderTrendingList)
+    renderDrawerTrendingTopics() {
+        const list = document.getElementById('drawerTrendingList');
+        if (!list) return;
+
+        // Fetch from API
+        fetch('/api/v1/trending')
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to fetch trending');
+                return response.json();
+            })
+            .then(data => {
+                if (data.topics && data.topics.length > 0) {
+                    list.innerHTML = '';
+                    data.topics.forEach(topic => {
+                        const item = document.createElement('div');
+                        item.className = 'drawer-list-item';
+                        item.innerHTML = `<i class="fas fa-bolt" style="color: #e53e3e;"></i> ${topic.prompt}`;
+                        item.onclick = () => {
+                            this.messageInput.value = topic.prompt;
+                            this.closeDrawer();
+                            this.handleSend();
+                        };
+                        list.appendChild(item);
+                    });
+                } else {
+                    list.innerHTML = '<div class="drawer-list-item" style="opacity: 0.7; cursor: default;">No trending topics</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching trending:', error);
+                list.innerHTML = '<div class="drawer-list-item" style="opacity: 0.7; cursor: default;">Failed to load</div>';
+            });
+    }
+
+    // Desktop Parity: Render Conversations (uses same logic as desktop renderConversations)
+    renderDrawerConversations() {
+        const list = document.getElementById('drawerConversationsList');
+        if (!list) return;
+
+        const conversations = JSON.parse(localStorage.getItem('conversation_history_list') || '[]');
+
+        if (conversations.length === 0) {
+            list.innerHTML = '<div class="drawer-list-item" style="opacity: 0.7; cursor: default;">No conversations yet</div>';
+            return;
+        }
+
+        list.innerHTML = '';
+        conversations.forEach(conv => {
+            const item = document.createElement('div');
+            item.className = 'drawer-list-item';
+            item.setAttribute('role', 'button');
+            item.setAttribute('tabindex', '0');
+
+            const date = new Date(conv.timestamp);
+            const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            const iconColor = '#48bb78';
+
+            item.innerHTML = `<i class="fas fa-comment" style="color: ${iconColor};"></i> ${conv.firstMessage}...`;
+            item.title = `Started at ${timeStr}`;
+
+            const load = () => this.drawerLoadConversation(conv.id);
+            item.onclick = load;
+            item.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    load();
+                }
+            });
+
+            list.appendChild(item);
+        });
+    }
+
+    // Desktop Parity: Load Conversation (uses same logic as desktop loadConversation)
+    drawerLoadConversation(id) {
+        const conversations = JSON.parse(localStorage.getItem('conversation_history_list') || '[]');
+        const conv = conversations.find(c => c.id === id);
+
+        if (!conv) {
+            alert('Conversation not found.');
+            return;
+        }
+
+        if (conv.history && Array.isArray(conv.history) && conv.history.length > 0) {
+            // Stop any ongoing speech
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
+            sessionStorage.setItem('current_conversation_history', JSON.stringify(conv.history));
+            sessionStorage.setItem('current_conversation_id', conv.id);
+            this.closeDrawer();
+            location.reload();
+        } else {
+            const updated = conversations.filter(c => c.id !== id);
+            localStorage.setItem('conversation_history_list', JSON.stringify(updated));
+            alert('Old conversation removed. New ones will work correctly.');
+            this.renderDrawerConversations();
+        }
     }
 }
 
