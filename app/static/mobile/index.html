@@ -154,18 +154,21 @@
                 <span class="menu-value" id="currentLang">English</span>
                 <i class="fas fa-chevron-right"></i>
             </button>
-            <button class="menu-item" id="menuTTS">
-                <i class="fas fa-volume-mute" id="ttsIcon"></i>
-                <span id="ttsLabel">Unmute TTS</span>
-            </button>
-            <button class="menu-item" id="menuUpload">
-                <i class="fas fa-paperclip"></i>
-                <span>Upload Image</span>
-            </button>
-            <button class="menu-item" id="menuSupport">
-                <i class="fas fa-headset"></i>
-                <span>Contact Support</span>
-            </button>
+
+            <div class="menu-actions-grid">
+                <button class="menu-item grid-item" id="menuTTS" aria-label="Toggle TTS">
+                    <i class="fas fa-volume-mute" id="ttsIcon"></i>
+                    <span id="ttsLabel" class="sr-only">Unmute TTS</span>
+                </button>
+                <button class="menu-item grid-item" id="menuUpload" aria-label="Upload Image">
+                    <i class="fas fa-paperclip"></i>
+                    <span class="sr-only">Upload Image</span>
+                </button>
+                <button class="menu-item grid-item" id="menuSupport" aria-label="Contact Support">
+                    <i class="fas fa-headset"></i>
+                    <span class="sr-only">Contact Support</span>
+                </button>
+            </div>
         </div>
     </div>
 
