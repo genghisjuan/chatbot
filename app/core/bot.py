@@ -242,9 +242,9 @@ LANGUAGE: Respond entirely in {language_name}. All explanations, troubleshooting
             
             # Include relevance score and article number for AI reference
             context_parts.append(
-                f"[ARTICLE {i}] (Relevance: {score:.2f})\n"
-                f"Source: {source} (Page {page})\n"
-                f"Content: {doc.page_content}"
+                f"=== DOCUMENT {i} ===\n"
+                f"METADATA: {{'source': '{source}', 'page': {page}, 'relevance': {score:.2f}}}\n"
+                f"CONTENT:\n{doc.page_content}"
             )
             
         context = "\n\n---\n\n".join(context_parts)
@@ -311,8 +311,26 @@ How to Use This Content:
 1. Use anything relevant — if the KB mentions it, cite it
 2. Synthesize from partial info — if docs only show configs, explain the concept using that
 3. Never hallucinate — if it's not in the KB, say: "I don't have that in my documents"
-4. Citations required for technical steps — format: "(Source: filename.ext)"
-5. No outside URLs unless explicitly written in the docs
+4. No outside URLs unless explicitly written in the docs
+
+CITATION FORMATTING RULES (MANDATORY):
+• Rule A: If all content comes from ONE source, cite it ONCE at the very end. Format: "Source: filename.ext"
+• Rule B: If using MULTIPLE sources, cite at the end of each SECTION/STEP group, not after every bullet.
+• Rule C: NO repeated citations. Never write "(Source: X)" back-to-back.
+• Rule D: Inline citations are ONLY for disambiguating mixed sources in the same paragraph.
+
+CITATION EXAMPLES (STRICT ADHERENCE REQUIRED):
+
+❌ BAD (Repetitive):
+1. Check the power cable (Source: Manual.pdf).
+2. Restart the device (Source: Manual.pdf).
+3. Verify the LED is green (Source: Manual.pdf).
+
+✅ GOOD (Grouped):
+1. Check the power cable.
+2. Restart the device.
+3. Verify the LED is green.
+(Source: Manual.pdf)
 
 RESPONSE STRATEGY
 
@@ -346,7 +364,7 @@ TECHNICAL RULES (CRITICAL)
 • Grounding: KB > everything
 • Accuracy: Use exact settings (baud rates, ports, paths) as documented
 • Precision: If docs say "Tap bbpos_cros" → you say "Tap bbpos_cros"
-• Formatting: Bold=actions | Numbered=steps | Code=literals | Citations=filename
+• Formatting: Bold=actions | Numbered=steps | Code=literals | Citations=grouped_at_end
 
 LANGUAGE: Respond entirely in {language_name} — full message, explanations, follow-ups.
 

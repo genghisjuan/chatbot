@@ -9,6 +9,7 @@ class MobileChat {
         this.isGenerating = false;
         this.abortController = null;
         this.shouldStopStreaming = false; // Flag to break stream loop
+        this.hasReceivedAnyTokens = false; // Track if any bot response arrived
 
         // Language and TTS state (ported from desktop)
         this.selectedLanguage = 'en-US'; // Default
@@ -44,9 +45,13 @@ class MobileChat {
 
         // Unified send/stop button click handler
         this.sendBtn.addEventListener('click', () => {
+            console.log('📤 Send button clicked');
+            console.log('isGenerating:', this.isGenerating);
             if (this.isGenerating) {
+                console.log('🛑 Calling handleStop');
                 this.handleStop();
             } else {
+                console.log('📨 Calling handleSend');
                 this.handleSend();
             }
         });
@@ -116,6 +121,15 @@ class MobileChat {
         // Clear input immediately
         this.messageInput.value = '';
 
+        // SET GENERATION STATE
+        this.isGenerating = true;
+        console.log('✅ SET isGenerating = true');
+        this.hasReceivedAnyTokens = false;  // Reset token tracker
+        this.shouldStopStreaming = false;   // Reset stop flag
+
+        // UPDATE BUTTON UI
+        this.updateSendButton();
+
         // Render user message
         this.addUserMessage(text, this.selectedFile);
 
@@ -144,9 +158,21 @@ class MobileChat {
         } catch (error) {
             if (error.name !== 'AbortError') {
                 console.error('Chat error:', error);
-                this.addErrorMessage('Error connecting toserver. Please try again.');
+                this.addErrorMessage('Network error — please try again.');
             }
+            // AbortError = user stopped, no error message needed
         } finally {
+            // RESET GENERATION STATE
+            this.isGenerating = false;
+            console.log('❌ SET isGenerating = false (finally)');
+            this.hasReceivedAnyTokens = false;
+
+            // CLEAR ABORT CONTROLLER
+            this.abortController = null;
+
+            // UPDATE BUTTON UI
+            this.updateSendButton();
+
             // Re-enable input
             this.toggleInputState(false);
             this.typingIndicator.style.display = 'none';
@@ -157,6 +183,68 @@ class MobileChat {
                 this.clearImagePreview();
             }
         }
+    }
+
+    updateSendButton() {
+        const icon = this.sendBtn.querySelector('i');
+
+        if (this.isGenerating) {
+            // Show Stop icon
+            icon.className = 'fas fa-stop';
+            this.sendBtn.setAttribute('aria-label', 'Stop');
+            this.sendBtn.classList.add('stop-mode');
+        } else {
+            // Show Send icon
+            icon.className = 'fas fa-paper-plane';
+            this.sendBtn.setAttribute('aria-label', 'Send');
+            this.sendBtn.classList.remove('stop-mode');
+        }
+    }
+
+    handleStop() {
+        console.log('🛑 Stop requested by user');
+
+        // Set flag to break stream loop
+        this.shouldStopStreaming = true;
+
+        // Abort ongoing request
+        if (this.abortController) {
+            console.log('🛑 Aborting controller');
+            this.abortController.abort();
+            // DON'T null it here - let finally block clean up
+            // This allows stream loop to check signal.aborted
+        }
+
+        // Cancel TTS immediately
+        if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+
+        // If no tokens received, remove the empty bot message bubble
+        if (!this.hasReceivedAnyTokens) {
+            const botWrappers = document.querySelectorAll('.message-wrapper.bot');
+            if (botWrappers.length > 0) {
+                const lastBotWrapper = botWrappers[botWrappers.length - 1];
+                const message = lastBotWrapper.querySelector('.message');
+                if (!message || !message.textContent.trim()) {
+                    lastBotWrapper.remove();
+                }
+            }
+        }
+
+        // Reset state
+        this.isGenerating = false;
+        console.log('❌ SET isGenerating = false (handleStop)');
+        this.hasReceivedAnyTokens = false;
+        this.shouldStopStreaming = false;
+
+        // Update button UI
+        this.updateSendButton();
+
+        // Re-enable input
+        this.toggleInputState(false);
+        this.typingIndicator.style.display = 'none';
+        this.messageInput.focus();
     }
 
     setupMenuListeners() {
@@ -615,9 +703,8 @@ class MobileChat {
             formData.append('file', this.selectedFile);
         }
 
-        // Setup abort controller
+        // Setup abort controller (isGenerating already set in handleSend)
         this.abortController = new AbortController();
-        this.isGenerating = true;
 
         // API call
         const response = await fetch('/api/v1/chat', {
@@ -633,47 +720,91 @@ class MobileChat {
         // Handle streaming response
         await this.handleStream(response);
 
-        this.isGenerating = false;
-        this.abortController = null;
+        // State cleanup happens in handleSend finally block
     }
 
     async handleStream(response) {
+        console.log('🌊 handleStream started');
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
 
         // Create bot message bubble
         const botElement = this.addBotMessage();
         let botText = '';
+        let chunkCount = 0;
 
         // Read stream chunks
         while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            botText += chunk;
+
+            // CHECK STOP FLAG AND ABORT SIGNAL BEFORE READ
+            if (this.shouldStopStreaming || this.abortController?.signal.aborted) {
+                console.log('🛑 Stream loop detected stop - breaking');
+                console.log('shouldStopStreaming:', this.shouldStopStreaming);
+                console.log('signal.aborted:', this.abortController?.signal.aborted);
+                try {
+                    reader.cancel(); // Cancel the reader
+                    console.log('🛑 Reader cancelled successfully');
+                } catch (e) {
+                    console.log('Reader cancel error:', e);
+                }
+                break;
+            }
+
+            let chunk;
+            try {
+                const result = await reader.read();
+                if (result.done) {
+                    console.log(`Stream completed normally - received ${chunkCount} chunks`);
+                    break;
+                }
+                chunk = result.value;
+                chunkCount++;
+                console.log(`📦 Chunk ${chunkCount} received, size: ${chunk.length} bytes`);
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('🛑 Reader.read() aborted by signal');
+                    break;
+                }
+                console.error('Stream read error:', error);
+                throw error;
+            }
+
+            const chunkText = decoder.decode(chunk, { stream: true });
+
+
+
+            botText += chunkText;
+
+            // TRACK TOKEN ARRIVAL
+            if (botText.trim().length > 0) {
+                this.hasReceivedAnyTokens = true;
+            }
 
             // Strip suggestions marker (desktop does this)
             let displayText = botText.replace(/<<SUGGESTIONS>>.*$/s, '').trim();
-            displayText = displayText.replace(/<<>.*$/s, '').trim();
+            displayText = displayText.replace(/<<>>.*$/s, '').trim();
 
-            // Update bot message (plain text for Phase 2, no markdown yet)
-            botElement.textContent = displayText;
+            // Update bot message with markdown rendering (desktop parity)
+            botElement.innerHTML = marked.parse(displayText);
             this.scrollToBottom();
         }
 
         // Clean final text
         const cleanBotText = botText.replace(/<<SUGGESTIONS>>.*$/s, '').trim();
 
-        // Update conversation history
-        this.conversationHistory.push({ role: "assistant", content: cleanBotText });
+        // ONLY ADD TO HISTORY IF WE HAVE CONTENT (not stopped before tokens)
+        if (cleanBotText.length > 0) {
+            // Update conversation history
+            this.conversationHistory.push({ role: "assistant", content: cleanBotText });
 
-        // Save updated conversation (desktop parity)
-        this.saveConversation();
-        this.updateSavedConversation();
+            // Save updated conversation (desktop parity)
+            this.saveConversation();
+            this.updateSavedConversation();
+        }
 
-        // Speak (matching desktop timing - after full message)
-        if (!this.isMuted) {
+        // Speak (matching desktop timing - after full message, only if not stopped and not muted)
+        if (!this.isMuted && !this.shouldStopStreaming && cleanBotText.length > 0) {
             try {
                 this.speak(cleanBotText);
             } catch (e) {
@@ -718,14 +849,50 @@ class MobileChat {
 
         const message = document.createElement('div');
         message.className = 'message';
-        message.textContent = content; // Set content if provided, empty for streaming
 
-        // Store message ID if provided (for restoration)
-        if (id) {
-            wrapper.dataset.messageId = id;
+        // Render markdown if content provided (restoration), empty for streaming (desktop parity)
+        if (content) {
+            message.innerHTML = marked.parse(content);
+        } else {
+            message.textContent = '';
         }
 
+        // Store message ID (desktop parity)
+        const msgId = id || Date.now().toString();
+        wrapper.dataset.messageId = msgId;
+
         wrapper.appendChild(message);
+
+        // Add rating controls (desktop parity)
+        const actionsRow = document.createElement('div');
+        actionsRow.className = 'actions-row';
+
+        const feedbackDiv = document.createElement('div');
+        feedbackDiv.className = 'feedback-buttons';
+
+        const upBtn = document.createElement('button');
+        upBtn.className = 'feedback-btn';
+        upBtn.innerHTML = '<i class="fas fa-thumbs-up"></i>';
+        upBtn.onclick = () => this.sendFeedback(msgId, 'up', upBtn, downBtn, wrapper);
+
+        const downBtn = document.createElement('button');
+        downBtn.className = 'feedback-btn';
+        downBtn.innerHTML = '<i class="fas fa-thumbs-down"></i>';
+        downBtn.onclick = () => this.sendFeedback(msgId, 'down', downBtn, upBtn, wrapper);
+
+        // Restore previous rating state if it exists (desktop parity)
+        const existingRating = this.getRating(msgId);
+        if (existingRating === 'up') {
+            upBtn.classList.add('active-up');
+        } else if (existingRating === 'down') {
+            downBtn.classList.add('active-down');
+        }
+
+        feedbackDiv.appendChild(upBtn);
+        feedbackDiv.appendChild(downBtn);
+        actionsRow.appendChild(feedbackDiv);
+        wrapper.appendChild(actionsRow);
+
         this.chatMessages.appendChild(wrapper);
         this.scrollToBottom();
 
@@ -737,7 +904,9 @@ class MobileChat {
         wrapper.className = 'message-wrapper bot';
 
         const message = document.createElement('div');
-        message.className = 'message error';
+        message.className = 'message error-message';
+        message.style.color = '#e53e3e';
+        message.style.borderColor = '#e53e3e';
         message.textContent = text;
 
         wrapper.appendChild(message);
@@ -747,7 +916,8 @@ class MobileChat {
 
     toggleInputState(disabled) {
         this.messageInput.disabled = disabled;
-        this.sendBtn.disabled = disabled;
+        // NEVER disable the send button, as it doubles as the Stop button
+        this.sendBtn.disabled = false;
 
         if (disabled) {
             this.messageInput.parentElement.classList.add('disabled');
@@ -823,6 +993,75 @@ class MobileChat {
             conversations[index].history = this.conversationHistory;
             conversations[index].timestamp = new Date().toISOString();
             localStorage.setItem('conversation_history_list', JSON.stringify(conversations));
+        }
+    }
+
+    // ============================================
+    // Message Rating Methods (Desktop Parity)
+    // ============================================
+
+    loadRatings() {
+        try {
+            const stored = sessionStorage.getItem('message_ratings');
+            return stored ? JSON.parse(stored) : {};
+        } catch (e) {
+            console.error('Failed to load ratings:', e);
+            return {};
+        }
+    }
+
+    saveRating(msgId, rating) {
+        const ratings = this.loadRatings();
+        ratings[msgId] = rating;
+        sessionStorage.setItem('message_ratings', JSON.stringify(ratings));
+    }
+
+    getRating(msgId) {
+        const ratings = this.loadRatings();
+        return ratings[msgId] || null;
+    }
+
+    async sendFeedback(msgId, rating, btn, otherBtn, wrapper) {
+        // Toggle Logic (exact desktop behavior)
+        const isActive = btn.classList.contains('active-up') || btn.classList.contains('active-down');
+
+        let newRating = rating;
+
+        if (isActive) {
+            // Toggle Off
+            btn.classList.remove('active-up', 'active-down');
+            newRating = 'none';
+
+            // Remove from storage
+            const ratings = this.loadRatings();
+            if (ratings[msgId]) {
+                delete ratings[msgId];
+                sessionStorage.setItem('message_ratings', JSON.stringify(ratings));
+            }
+        } else {
+            // Toggle On or Switch
+            btn.classList.add(rating === 'up' ? 'active-up' : 'active-down');
+            otherBtn.classList.remove('active-up', 'active-down');
+
+            // Save new rating
+            this.saveRating(msgId, rating);
+        }
+
+        try {
+            const payload = {
+                message_id: msgId,
+                rating: newRating,
+                user_query: wrapper.dataset.userQuery || '',
+                bot_response: wrapper.dataset.botResponse || ''
+            };
+
+            await fetch('/api/v1/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch (e) {
+            console.error('Feedback failed', e);
         }
     }
 
