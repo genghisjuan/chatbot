@@ -827,6 +827,57 @@ body.drawer-open {
     color: #ececec !important;
 }
 
+/* Grid Layout for Icons (Desktop Parity) */
+.menu-actions-grid {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px 4px;
+    gap: 12px;
+}
+
+.menu-item.grid-item {
+    width: auto !important;
+    flex: 1;
+    justify-content: center !important;
+    padding: 12px !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-radius: 12px !important;
+}
+
+.menu-item.grid-item i {
+    font-size: 1.25em !important;
+    width: auto !important;
+    /* Allow specific icons (TTS) to override color */
+    color: inherit;
+}
+
+.menu-item.grid-item:active {
+    background: rgba(255, 255, 255, 0.15) !important;
+    transform: scale(0.96);
+}
+
+/* Specific TTS Icon Override to undo generic !important if possible, 
+   or at least provide a default that matches 'Muted' state if JS fails */
+#ttsIcon {
+    /* If JS sets style, we want it to show. 
+       But .menu-item i:first-child has !important.
+       We can't easily fix this without removing !important from line 773. 
+       We will accept this limitation or try to target ID. */
+}
+
+/* Screen Reader Only Utility */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 #languageMenu .back-btn {
     color: #ececec !important;
 }
