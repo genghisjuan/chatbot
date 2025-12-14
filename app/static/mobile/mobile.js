@@ -1212,7 +1212,7 @@ class MobileChat {
                         list.appendChild(item);
                     });
                 } else {
-                    list.innerHTML = '<div class="drawer-list-item" style="opacity: 0.7; cursor: default;">No trending topics</div>';
+                    list.innerHTML = '<div class="drawer-list-item" style="opacity: 0.7; cursor: default;">No Trending Topics</div>';
                 }
             })
             .catch(error => {

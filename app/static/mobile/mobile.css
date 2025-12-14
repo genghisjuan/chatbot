@@ -105,8 +105,9 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 14px;
-    color: var(--text-secondary);
+    font-size: 12px;
+    color: #48bb78;
+    font-weight: 500;
 }
 
 .status-dot {
@@ -185,7 +186,7 @@ body {
     position: fixed;
     top: 0;
     left: -100%;
-    width: 75%;
+    width: 250px;
     max-width: 280px;
     height: 100%;
     background: var(--bg-secondary);
@@ -251,7 +252,7 @@ body.drawer-open {
 .drawer-new-chat-btn {
     width: 100%;
     padding: 10px 14px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--accent-primary);
     color: white;
     border: none;
     border-radius: 6px;
@@ -317,7 +318,7 @@ body.drawer-open {
 
 .drawer-list-item {
     padding: 10px 12px;
-    color: var(--text-primary);
+    color: #9ca3af;
     font-size: 13px;
     line-height: 1.3;
     cursor: pointer;
@@ -332,7 +333,13 @@ body.drawer-open {
 
 .drawer-list-item:hover,
 .drawer-list-item:active {
-    background: var(--bg-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e5e7eb;
+}
+
+.drawer-list-item.active {
+    background: rgba(102, 126, 234, 0.12);
+    color: var(--accent-primary);
 }
 
 .drawer-list-item i {
@@ -568,7 +575,7 @@ body.drawer-open {
 
 /* Composer */
 .composer-container {
-    background: var(--bg-secondary);
+    background: var(--bg-primary);
     border-top: 1px solid var(--border-color);
     padding: 16px 20px;
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
@@ -580,7 +587,7 @@ body.drawer-open {
     display: flex;
     align-items: center;
     gap: 8px;
-    background: var(--input-bg);
+    background: var(--bg-secondary);
     /* Desktop parity */
     border: 1px solid var(--border-color);
     /* Desktop parity (1px) */
@@ -726,7 +733,7 @@ body.drawer-open {
     left: 16px !important;
     right: auto !important;
     width: 250px !important;
-    background: var(--card-bg) !important;
+    background: #12121a !important;
     /* Desktop parity */
     border: 1px solid var(--border-color) !important;
     border-radius: 12px !important;
@@ -734,7 +741,7 @@ body.drawer-open {
     z-index: 2000;
     display: none;
     flex-direction: column;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     animation: scaleIn 0.15s ease-out !important;
     transform-origin: bottom left;
 }
@@ -769,8 +776,8 @@ body.drawer-open {
     padding: 10px 12px !important;
     background: transparent;
     border: none;
-    color: #ececec !important;
-    font-size: 14px !important;
+    color: var(--text-primary) !important;
+    font-size: 13px !important;
     text-align: left;
     min-height: auto !important;
     border-radius: 6px !important;
@@ -788,8 +795,15 @@ body.drawer-open {
 .menu-item i:first-child {
     width: 20px;
     text-align: center;
-    font-size: 16px !important;
-    color: #ececec !important;
+    font-size: 14px !important;
+    color: inherit !important;
+    opacity: 0.8;
+}
+
+.menu-value {
+    color: var(--text-muted) !important;
+    margin-left: auto;
+    font-size: 0.9em;
 }
 
 /* Hide chevron arrows to match ChatGPT clean look */
@@ -1172,8 +1186,8 @@ body.drawer-open {
     /* Above composer */
     left: 16px !important;
     width: 250px !important;
-    background: #232323 !important;
-    /* ChatGPT dark gray */
+    background: #12121a !important;
+    /* Desktop Sidebar Parity */
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     border-radius: 12px !important;
     padding: 6px !important;
@@ -1273,4 +1287,10 @@ body.drawer-open {
 
 #languageMenu .back-btn {
     color: #ececec !important;
+}
+
+/* Mobile Support Modal Form - Parity with Desktop */
+#mobileEmailForm input,
+#mobileEmailForm textarea {
+    font-family: 'Inter', sans-serif;
 }

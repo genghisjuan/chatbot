@@ -21,7 +21,7 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
     <!-- Mobile Styles -->
-    <link rel="stylesheet" href="/static/mobile/mobile.css">
+    <link rel="stylesheet" href="/static/mobile/mobile.css?v=parity9">
 </head>
 
 <body>
@@ -58,7 +58,8 @@
                     <i class="fas fa-chevron-down" id="drawerTrendingChevron" style="font-size: 0.8em;"></i>
                 </div>
                 <div class="drawer-section-list" id="drawerTrendingList">
-                    <div class="drawer-list-item">Loading...</div>
+                    <div class="drawer-list-item" style="color: var(--text-secondary); cursor: default;">No Trending
+                        Topics</div>
                 </div>
             </div>
 
@@ -148,16 +149,6 @@
                 <span>Actions</span>
                 <button class="menu-close" aria-label="Close">&times;</button>
             </div>
-            <button class="menu-item" id="menuLanguage">
-                <i class="fas fa-language"></i>
-                <span>Language</span>
-                <span class="menu-value" id="currentLang">English</span>
-                <i class="fas fa-chevron-right"></i>
-            </button>
-            <button class="menu-item" id="menuTTS">
-                <i class="fas fa-volume-mute" id="ttsIcon"></i>
-                <span id="ttsLabel">Unmute TTS</span>
-            </button>
             <button class="menu-item" id="menuUpload">
                 <i class="fas fa-paperclip"></i>
                 <span>Upload Image</span>
@@ -165,6 +156,16 @@
             <button class="menu-item" id="menuSupport">
                 <i class="fas fa-headset"></i>
                 <span>Contact Support</span>
+            </button>
+            <button class="menu-item" id="menuTTS">
+                <i class="fas fa-volume-mute" id="ttsIcon"></i>
+                <span id="ttsLabel">Unmute TTS</span>
+            </button>
+            <button class="menu-item" id="menuLanguage">
+                <i class="fas fa-language"></i>
+                <span>Language</span>
+                <span class="menu-value" id="currentLang">English</span>
+                <i class="fas fa-chevron-right"></i>
             </button>
         </div>
     </div>
