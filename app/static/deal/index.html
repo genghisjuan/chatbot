@@ -27,22 +27,29 @@
             box-sizing: border-box;
         }
 
+        /* v1.6: Full-height workflow container */
         .workflow-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 50px);
+            /* Full viewport minus fixed header */
+            overflow: hidden;
             padding: 20px;
             max-width: 100%;
         }
 
+        /* v2.0: Centered step indicator for single-window layout */
         .step-indicator {
             display: flex;
-            gap: 12px;
+            justify-content: center;
+            gap: 24px;
             margin-bottom: 24px;
-            padding: 12px 16px;
-            background: var(--bg-secondary);
-            border-radius: 12px;
+            padding: 12px 0;
         }
 
-        .step-indicator .step {
-            flex: 1;
+        /* v2.0: Fixed-width step headers */
+        .step {
+            width: 180px;
             text-align: center;
             padding: 8px 16px;
             border-radius: 8px;
@@ -63,14 +70,29 @@
             opacity: 0.7;
         }
 
+        /* v2.0: Single-column centered layout */
         .workflow-columns {
-            display: grid;
-            grid-template-columns: 1fr 1.5fr 1.5fr;
-            gap: 24px;
+            display: flex;
+            justify-content: center;
+            flex: 1;
+            min-height: 0;
         }
 
+        /* v2.0: Single active window visibility control */
         .column {
-            min-height: 400px;
+            display: none;
+            /* Hidden by default */
+            flex-direction: column;
+            width: 600px;
+            /* Fixed width for consistency */
+            max-width: 90%;
+            /* Responsive constraint */
+            height: 100%;
+        }
+
+        .column.active-section {
+            display: flex;
+            /* Show only active column */
         }
 
         /* Reuse message styling for cards */
@@ -79,6 +101,12 @@
             border-radius: 12px;
             padding: 20px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            flex: 1;
+            /* Fill column */
+            overflow-y: auto;
+            /* Scroll if content overflows */
+            display: flex;
+            flex-direction: column;
         }
 
         .workflow-card h3 {
@@ -278,6 +306,96 @@
                 flex-direction: row;
                 overflow-x: auto;
             }
+        }
+
+        /* ===== PHASE 1 UI POLISH: VISUAL HIERARCHY IMPROVEMENTS ===== */
+
+        /* Change 1: REMOVED - Do not de-emphasize through opacity */
+        /* Battle Card will be highlighted through container composition instead */
+
+        /* Change 2: Promote "Recommended Stack" section - Make it the hero */
+        .battlecard-section[data-section="stack"] {
+            background: linear-gradient(135deg, rgba(69, 123, 247, 0.1), rgba(69, 123, 247, 0.05));
+            border-left: 4px solid var(--accent-color);
+            padding: 20px;
+            margin-bottom: 24px;
+            border-radius: 8px;
+        }
+
+        .battlecard-section[data-section="stack"] h4 {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-bottom: 16px;
+        }
+
+        .battlecard-section[data-section="stack"] ul {
+            margin: 0;
+        }
+
+        .battlecard-section[data-section="stack"] li {
+            font-size: 1.05em;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+
+        /* Change 3: Scenario section - Uniform text color */
+        .battlecard-section[data-section="scenario"] {
+            font-size: 0.9em;
+            /* opacity removed - uniform text color */
+        }
+
+        .battlecard-section[data-section="scenario"] h4 {
+            font-size: 0.95em;
+            font-weight: 500;
+            /* color removed - inherits var(--text-color) */
+        }
+
+        .battlecard-section[data-section="scenario"] p {
+            line-height: 1.5;
+            /* color removed - inherits var(--text-color) */
+        }
+
+        /* Change 4: Establish visual hierarchy for all sections */
+
+        /* Tertiary sections - Uniform text color */
+        /* opacity removed - all sections use same text color */
+
+        .battlecard-section[data-section="pricing"] h4,
+        .battlecard-section[data-section="objections"] h4 {
+            font-size: 0.95em;
+            font-weight: 500;
+        }
+
+        /* Secondary sections (normal prominence) - Why Wins, Next Steps */
+        .battlecard-section[data-section="wins"] h4,
+        .battlecard-section[data-section="next_steps"] h4 {
+            font-weight: 600;
+        }
+
+        /* ===== v1.4: ADMIN KPI CARD STYLING ===== */
+
+        /* Apply JUNA Admin KPI card surface to all three sections */
+        .context-column .workflow-card,
+        .questions-column .workflow-card,
+        .battlecard-column .workflow-card {
+            background: #151A2E;
+            /* JUNA elevated dark */
+            border-radius: 12px;
+            /* JUNA card radius */
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            /* JUNA card elevation */
+            border: 1px solid rgba(180, 187, 207, 0.1);
+            /* Neutral border (inactive) */
+            padding: 24px;
+        }
+
+        /* Active section gets blue border (JUNA primary #6E86FF) */
+        .context-column.active-section .workflow-card,
+        .questions-column.active-section .workflow-card,
+        .battlecard-column.active-section .workflow-card {
+            border-color: #6E86FF;
+            /* JUNA primary color */
         }
     </style>
 </head>

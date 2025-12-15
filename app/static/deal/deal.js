@@ -541,6 +541,12 @@ class DealApp {
         `;
 
         content.innerHTML = html;
+
+        // Phase 1 UI Polish: De-emphasize Context & Questions after discovery completes
+        const contextColumn = document.querySelector('.context-column');
+        const questionsColumn = document.querySelector('.questions-column');
+        if (contextColumn) contextColumn.classList.add('discovery-complete');
+        if (questionsColumn) questionsColumn.classList.add('discovery-complete');
     }
 
     renderBattleCardFromMarkdown(markdown) {
@@ -822,6 +828,15 @@ class DealApp {
                 s.classList.add('completed');
             }
         });
+
+        // v2.0: Sync active-section class to column for visibility control
+        document.querySelectorAll('.column').forEach(col => {
+            col.classList.remove('active-section');
+        });
+        const activeColumn = document.querySelector(`.${step}-column`);
+        if (activeColumn) {
+            activeColumn.classList.add('active-section');
+        }
     }
 
     getStepOrder(step) {
@@ -1035,3 +1050,31 @@ window.dealApp = new DealApp();
 document.getElementById('copyAllBtn')?.addEventListener('click', () => window.dealApp.copyAll());
 document.getElementById('copyTalkTrackBtn')?.addEventListener('click', () => window.dealApp.copyTalkTrack());
 document.getElementById('copyObjectionsBtn')?.addEventListener('click', () => window.dealApp.copyObjections());
+
+// v1.4: Sync step indicator active state to columns for blue border
+const stepIndicator = document.getElementById('stepIndicator');
+if (stepIndicator) {
+    stepIndicator.addEventListener('click', (e) => {
+        const step = e.target.closest('.step');
+        if (step && step.dataset.step) {
+            const stepName = step.dataset.step;
+
+            // Remove active-section from all columns
+            document.querySelectorAll('.column').forEach(col => {
+                col.classList.remove('active-section');
+            });
+
+            // Add active-section to clicked column
+            const activeColumn = document.querySelector(`.${stepName}-column`);
+            if (activeColumn) {
+                activeColumn.classList.add('active-section');
+            }
+        }
+    });
+
+    // Initialize: Set Context column as default active on page load
+    const contextColumn = document.querySelector('.context-column');
+    if (contextColumn) {
+        contextColumn.classList.add('active-section');
+    }
+}
