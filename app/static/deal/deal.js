@@ -12,6 +12,8 @@ class DealApp {
         this.questions = [];
         this.currentQuestionIndex = 0;
         this.battleCard = null;
+        this.battleCardData = null;  // Store parsed battle card data
+        this.spokenScenario = null;   // Deterministic spoken-first scenario
         this.isProcessing = false;
         this.activeRunId = 0; // For request gating
 
@@ -404,9 +406,11 @@ class DealApp {
                 this.renderBattleCardFromMarkdown(fullResponse);
             }
 
-            // Show copy all button (only if still active run)
+            // Show copy buttons (only if still active run)
             if (this.activeRunId === runId) {
                 document.getElementById('copyAllBtn').style.display = 'inline-block';
+                document.getElementById('copyTalkTrackBtn').style.display = 'inline-block';
+                document.getElementById('copyObjectionsBtn').style.display = 'inline-block';
             }
 
         } catch (error) {
@@ -437,6 +441,14 @@ class DealApp {
 
     renderBattleCardFromJSON(data) {
         const content = document.getElementById('battlecardContent');
+
+        // Store battle card data for copy functions
+        this.battleCardData = data;
+
+        // Create spoken-first scenario ONCE (deterministic - Refinement #1)
+        if (data.scenario) {
+            this.spokenScenario = this.createSpokenScenario(data.scenario);
+        }
 
         let html = '';
 
@@ -636,13 +648,166 @@ class DealApp {
         const content = document.getElementById('battlecardContent');
         if (!content) return;
 
-        const text = content.innerText;
+        // Use clipboard utility with disclaimer included
+        const text = this.getPlainTextForCopy(content, { includeDisclaimer: true });
         navigator.clipboard.writeText(text).then(() => {
             this.showToast('Battle card copied to clipboard');
         }).catch(err => {
             console.error('Copy failed:', err);
             this.showToast('Copy failed', 'error');
         });
+    }
+
+    // Task 2.1: Copy Talk Track (Primary Adoption Lever)
+    copyTalkTrack() {
+        if (!this.battleCardData) {
+            this.showToast('No battle card available', 'error');
+            return;
+        }
+
+        // Use stored spoken scenario (deterministic)
+        const scenario = this.spokenScenario || this.battleCardData.scenario || '';
+        const whyWins = this.battleCardData.why_this_wins || [];
+
+        // Format talk track
+        let text = 'Talk Track\n\n';
+        // Strip pricing from scenario too
+        text += this.stripPricing(scenario) + '\n\n';
+        text += 'Why this wins:\n';
+
+        whyWins.forEach(item => {
+            if (typeof item === 'object' && item.title && item.detail) {
+                // Strip pricing from detail
+                const detail = this.stripPricing(item.detail);
+                text += `- ${item.title}: ${detail}\n`;
+            } else if (typeof item === 'string') {
+                text += `- ${this.stripPricing(item)}\n`;
+            }
+        });
+
+        // Copy to clipboard
+        navigator.clipboard.writeText(text.trim()).then(() => {
+            this.showToast('Talk track copied');
+        }).catch(err => {
+            console.error('Copy failed:', err);
+            this.showToast('Copy failed', 'error');
+        });
+    }
+
+    // Task 2.2: Copy Objections (Secondary Adoption Lever)
+    copyObjections() {
+        if (!this.battleCardData) {
+            this.showToast('No battle card available', 'error');
+            return;
+        }
+
+        const objections = this.battleCardData.objections || this.battleCardData.likely_objections || [];
+
+        if (objections.length === 0) {
+            this.showToast('No objections available', 'error');
+            return;
+        }
+
+        // Format objections as Q&A
+        let text = 'Common Objections & Responses\n\n';
+
+        objections.forEach(obj => {
+            if (typeof obj === 'object' && obj.objection && obj.response) {
+                const objection = this.stripPricing(obj.objection);
+                const response = this.stripPricing(obj.response);
+                text += `"${objection}"\n→ ${response}\n\n`;
+            }
+        });
+
+        // Copy to clipboard
+        navigator.clipboard.writeText(text.trim()).then(() => {
+            this.showToast('Objections copied');
+        }).catch(err => {
+            console.error('Copy failed:', err);
+            this.showToast('Copy failed', 'error');
+        });
+    }
+
+    // Task 2.3: Deterministic Clipboard Utility (Foundation)
+    getPlainTextForCopy(source, options = {}) {
+        const defaults = {
+            includePricing: false,
+            includeDisclaimer: false,
+            stripMarkup: true,
+            normalizeWhitespace: true,
+            preserveBullets: true
+        };
+
+        const opts = { ...defaults, ...options };
+        let text = '';
+
+        // Extract text from DOM or use provided text
+        if (typeof source === 'string') {
+            text = source;
+        } else if (source instanceof HTMLElement) {
+            text = source.innerText;
+        } else {
+            text = JSON.stringify(source, null, 2);
+        }
+
+        // Strip pricing by default
+        if (!opts.includePricing) {
+            text = this.stripPricing(text);
+        }
+
+        // Strip disclaimer by default (keep only for Copy All)
+        if (!opts.includeDisclaimer) {
+            // Remove disclaimer section
+            text = text.replace(/This battle card is for internal.*?(?=\n\n|\n$|$)/gs, '');
+            text = text.replace(/Disclaimer.*?(?=\n\n|\n$|$)/gs, '');
+        }
+
+        // Normalize whitespace
+        if (opts.normalizeWhitespace) {
+            // Collapse multiple spaces
+            text = text.replace(/[ \t]{2,}/g, ' ');
+            // Max 2 consecutive line breaks
+            text = text.replace(/\n{3,}/g, '\n\n');
+            // Trim lines
+            text = text.split('\n').map(line => line.trim()).join('\n');
+        }
+
+        return text.trim();
+    }
+
+    // Helper: Strip pricing from text
+    stripPricing(text) {
+        if (!text) return '';
+
+        // Strip dollar amounts
+        text = text.replace(/\$[\d,]+(\.\d{2})?/g, '[amount]');
+
+        // Restore percentage-based pricing context (keep percentages)
+        // But remove if it's clearly a fee percentage
+        text = text.replace(/\[amount\](\.\d+)?%/g, '[rate]%');
+
+        return text;
+    }
+
+    // Refinement #1: Create spoken-first scenario (deterministic)
+    createSpokenScenario(fullScenario) {
+        if (!fullScenario) return '';
+
+        // Transform once: written → spoken
+        let spoken = fullScenario
+            .replace(/\bThe merchant is\b/g, "They're")
+            .replace(/\bThe merchant\b/g, "They")
+            .replace(/\bcurrently processing\b/g, "doing")
+            .replace(/\bper month\b/g, "/month")
+            .replace(/\btransaction volume\b/g, "volume");
+
+        // Condense to first 2 sentences for brevity
+        const sentences = spoken.split(/\.\s+/);
+        if (sentences.length > 2) {
+            spoken = sentences.slice(0, 2).join('. ').trim() + '.';
+        }
+
+        return spoken;
     }
 
     // UI HELPER METHODS
@@ -729,6 +894,8 @@ class DealApp {
         `;
 
         document.getElementById('copyAllBtn').style.display = 'none';
+        document.getElementById('copyTalkTrackBtn').style.display = 'none';
+        document.getElementById('copyObjectionsBtn').style.display = 'none';
         document.getElementById('questionCount').textContent = '';
 
         this.updateStepIndicator('context');
@@ -864,5 +1031,7 @@ class DealApp {
 // Initialize app
 window.dealApp = new DealApp();
 
-// Add copy all handler
+// Add copy button handlers
 document.getElementById('copyAllBtn')?.addEventListener('click', () => window.dealApp.copyAll());
+document.getElementById('copyTalkTrackBtn')?.addEventListener('click', () => window.dealApp.copyTalkTrack());
+document.getElementById('copyObjectionsBtn')?.addEventListener('click', () => window.dealApp.copyObjections());

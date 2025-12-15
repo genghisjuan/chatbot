@@ -438,11 +438,19 @@
                     <div class="column battlecard-column">
                         <div class="workflow-card" id="battlecardCard">
                             <div
-                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
                                 <h3 style="margin: 0;">Battle Card</h3>
-                                <button class="copy-section" id="copyAllBtn" style="display: none;">
-                                    <i class="fas fa-copy"></i> Copy All
-                                </button>
+                                <div style="display: flex; gap: 8px;">
+                                    <button class="copy-section" id="copyTalkTrackBtn" style="display: none;">
+                                        <i class="fas fa-comments"></i> Copy Talk Track
+                                    </button>
+                                    <button class="copy-section" id="copyObjectionsBtn" style="display: none;">
+                                        <i class="fas fa-shield-alt"></i> Copy Objections
+                                    </button>
+                                    <button class="copy-section" id="copyAllBtn" style="display: none;">
+                                        <i class="fas fa-copy"></i> Copy All
+                                    </button>
+                                </div>
                             </div>
                             <div id="battlecardContent">
                                 <div class="empty-state">
