@@ -34,6 +34,10 @@ class DealApp {
         // Reset button
         document.getElementById('resetBtn')?.addEventListener('click', () => this.resetWorkflow());
 
+        // v2.2: Contextual cues for Context step (minimal, calm, non-prescriptive)
+        document.getElementById('vertical')?.addEventListener('change', (e) => this.showVerticalCue(e.target.value));
+        document.getElementById('volume')?.addEventListener('change', (e) => this.showVolumeCue(e.target.value));
+
         // Mobile nav toggle
         document.querySelector('.mobile-nav-toggle')?.addEventListener('click', () => this.toggleSidebar());
 
@@ -134,16 +138,16 @@ class DealApp {
         document.getElementById('startQuestionsBtn').textContent = 'Questions Started';
 
         // Start guided questions via API
-        await this.fetchFirstQuestion();
+        await this.fetchAllQuestions();
     }
 
-    async fetchFirstQuestion() {
+    async fetchAllQuestions() {
         this.isProcessing = true;
         this.showQuestionsLoading();
 
         try {
             const formData = new FormData();
-            formData.append('user_message', `Start guided questions. Context: ${JSON.stringify(this.context)}`);
+            formData.append('user_message', `Generate all 3 guided questions. Context: ${JSON.stringify(this.context)}`);
             formData.append('conversation_history', JSON.stringify(this.conversationHistory));
             formData.append('language', 'en-US');
             formData.append('mode', 'deal');
@@ -165,18 +169,22 @@ class DealApp {
                 fullResponse += decoder.decode(value, { stream: true });
             }
 
-            // Add to history
-            this.conversationHistory.push({
-                role: 'assistant',
-                content: fullResponse
-            });
-
-            // Render question
-            this.renderQuestion(fullResponse, 0);
+            // Parse JSON response with questions array
+            try {
+                const jsonResponse = JSON.parse(fullResponse.trim());
+                if (jsonResponse.questions && Array.isArray(jsonResponse.questions)) {
+                    this.questions = jsonResponse.questions;
+                    this.renderAllQuestions(this.questions);
+                } else {
+                    throw new Error('Invalid questions format');
+                }
+            } catch (parseError) {
+                console.error('Failed to parse questions JSON:', parseError);
+                this.renderQuestionsError();
+            }
 
         } catch (error) {
-            console.error('Error fetching question:', error);
-            this.showToast('Error starting questions. Please try again.', 'error');
+            console.error('Error fetching questions:', error);
             this.renderQuestionsError();
         } finally {
             this.isProcessing = false;
@@ -218,6 +226,53 @@ class DealApp {
                 this.submitAnswer();
             }
         });
+    }
+
+    // v2.1: Render all 3 questions simultaneously with equal spacing
+    renderAllQuestions(questions) {
+        const questionsContent = document.getElementById('questionsContent');
+        questionsContent.innerHTML = '';
+
+        // Update counter
+        document.getElementById('questionCount').textContent = `(3)`;
+
+        // Create container with equal spacing
+        const container = document.createElement('div');
+        container.style.cssText = 'display: flex; flex-direction: column; gap: 16px; height: 100%;';
+
+        questions.forEach((question, index) => {
+            const questionBox = document.createElement('div');
+            questionBox.className = 'question-box';
+            questionBox.style.cssText = 'flex: 1; display: flex; flex-direction: column;';
+
+            questionBox.innerHTML = `
+                <div style="margin-bottom: 8px; font-weight: 500; color: var(--text-secondary); font-size: 0.85em;">
+                    Question ${index + 1} of 3
+                </div>
+                <div style="margin-bottom: 12px; color: var(--text-color);">
+                    ${question}
+                </div>
+                <textarea 
+                    id="answer${index}" 
+                    placeholder="Your answer..." 
+                    rows="3"
+                    style="flex: 1; resize: none; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: var(--text-color); font-family: inherit;"
+                ></textarea>
+            `;
+
+            container.appendChild(questionBox);
+        });
+
+        // Add Generate Battle Card button
+        const submitBtn = document.createElement('button');
+        submitBtn.className = 'submit-btn';
+        submitBtn.id = 'submitAllAnswersBtn';
+        submitBtn.style.cssText = 'margin-top: 16px;';
+        submitBtn.innerHTML = '<i class="fas fa-file-alt" style="margin-right: 8px;"></i>Generate Battle Card';
+        submitBtn.onclick = () => this.submitAllAnswers();
+
+        container.appendChild(submitBtn);
+        questionsContent.appendChild(container);
     }
 
     async submitAnswer() {
@@ -289,6 +344,77 @@ class DealApp {
             this.isProcessing = false;
         }
     }
+
+    // v2.1: Submit all 3 answers together and generate battle card
+    async submitAllAnswers() {
+        // Collect all 3 answers
+        const answers = [
+            document.getElementById('answer0')?.value.trim(),
+            document.getElementById('answer1')?.value.trim(),
+            document.getElementById('answer2')?.value.trim()
+        ];
+
+        // Validate
+        if (answers.some(a => !a)) {
+            this.showToast('Please answer all 3 questions', 'error');
+            return;
+        }
+
+        // Build conversation history with all Q&A pairs
+        this.questions.forEach((question, index) => {
+            this.conversationHistory.push({
+                role: 'assistant',
+                content: question
+            });
+            this.conversationHistory.push({
+                role: 'user',
+                content: answers[index]
+            });
+        });
+
+        // Generate battle card
+        await this.generateBattleCard();
+    }
+
+    // v2.2: Contextual cues for Context step (minimal, calm, non-prescriptive)
+    showVerticalCue(vertical) {
+        const cueElement = document.getElementById('verticalCue');
+        if (!cueElement) return;
+
+        const cues = {
+            'restaurant': 'Restaurants typically care about tip handling and table management.',
+            'retail': 'Retail merchants often prioritize inventory integration and fast checkout.',
+            'healthcare': 'Healthcare businesses usually need HIPAA-compliant payment solutions.',
+            'general': 'We\'ll tailor recommendations based on your answers.'
+        };
+
+        if (vertical && cues[vertical]) {
+            cueElement.textContent = cues[vertical];
+            cueElement.style.display = 'block';
+        } else {
+            cueElement.style.display = 'none';
+        }
+    }
+
+    showVolumeCue(volume) {
+        const cueElement = document.getElementById('volumeCue');
+        if (!cueElement) return;
+
+        const cues = {
+            '<10k': 'Smaller volume—cost efficiency and simplicity are often key.',
+            '10k-50k': 'Mid-range volume—balance of features and competitive rates.',
+            '50k-250k': 'Higher volume—advanced features and rate optimization matter more.',
+            '250k+': 'Enterprise volume—comprehensive solutions and support are critical.'
+        };
+
+        if (volume && cues[volume]) {
+            cueElement.textContent = cues[volume];
+            cueElement.style.display = 'block';
+        } else {
+            cueElement.style.display = 'none';
+        }
+    }
+
 
     showGenerateBattleCardButton() {
         const questionsContent = document.getElementById('questionsContent');
@@ -1069,6 +1195,9 @@ if (stepIndicator) {
             if (activeColumn) {
                 activeColumn.classList.add('active-section');
             }
+
+            // v2.1: Also update step indicator visual state
+            window.dealApp.updateStepIndicator(stepName);
         }
     });
 
@@ -1078,3 +1207,4 @@ if (stepIndicator) {
         contextColumn.classList.add('active-section');
     }
 }
+

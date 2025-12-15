@@ -83,8 +83,8 @@
             display: none;
             /* Hidden by default */
             flex-direction: column;
-            width: 600px;
-            /* Fixed width for consistency */
+            width: 1000px;
+            /* Fixed width for consistency - v2.1 increased */
             max-width: 90%;
             /* Responsive constraint */
             height: 100%;
@@ -490,7 +490,8 @@
                     <div class="column context-column">
                         <div class="workflow-card" id="contextCard">
                             <h3>Deal Context</h3>
-                            <p class="helper-text">Let's start with the basics.</p>
+                            <p class="helper-text">Help JUNA understand this merchant so we can tailor the right
+                                approach.</p>
 
                             <div class="form-field">
                                 <label>Vertical <span style="color: #e53e3e;">*</span></label>
@@ -501,6 +502,9 @@
                                     <option value="healthcare">Healthcare</option>
                                     <option value="general">General / Other</option>
                                 </select>
+                                <div id="verticalCue"
+                                    style="display: none; margin-top: 8px; font-size: 0.85em; color: var(--text-secondary);">
+                                </div>
                             </div>
 
                             <div class="form-field">
@@ -513,7 +517,7 @@
                                 <input type="text" id="currentProvider" placeholder="e.g., Square, Clover">
                             </div>
 
-                            <div class="form-field">
+                            <div class="form-field" style="margin-top: 20px;">
                                 <label>Monthly Volume</label>
                                 <select id="volume">
                                     <option value="">Select range...</option>
@@ -523,12 +527,19 @@
                                     <option value="50k-250k">$50k - $250k</option>
                                     <option value="250k+">$250k+</option>
                                 </select>
+                                <div id="volumeCue"
+                                    style="display: none; margin-top: 8px; font-size: 0.85em; color: var(--text-secondary);">
+                                </div>
                             </div>
 
-                            <div class="toggles">
-                                <label><input type="checkbox" id="toggleTips"> Tips</label>
-                                <label><input type="checkbox" id="toggleMemberships"> Memberships</label>
-                                <label><input type="checkbox" id="toggleEcommerce"> E-commerce</label>
+                            <div style="margin-top: 20px;">
+                                <label style="display: block; margin-bottom: 8px; font-size: 0.95em;">Revenue
+                                    Streams</label>
+                                <div class="toggles">
+                                    <label><input type="checkbox" id="toggleTips"> Tips</label>
+                                    <label><input type="checkbox" id="toggleMemberships"> Memberships</label>
+                                    <label><input type="checkbox" id="toggleEcommerce"> E-commerce</label>
+                                </div>
                             </div>
 
                             <button class="submit-btn" id="startQuestionsBtn" style="width: 100%; margin-top: 20px;">
