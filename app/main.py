@@ -116,6 +116,11 @@ async def admin_page() -> FileResponse:
 async def mobile_page() -> FileResponse:
     return FileResponse("app/static/mobile/index.html")
 
+# Helper to serve deal assistant page
+@app.get("/deal", include_in_schema=False)
+async def deal_page() -> FileResponse:
+    return FileResponse("app/static/deal/index.html")
+
 # CORS already added above (before rate limiting middleware)
 
 # API Routers
