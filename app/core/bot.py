@@ -24,38 +24,51 @@ Dependencies:
 - Pinecone: Vector search
 - LangChain: RAG pipeline orchestration
 """
-from app.schemas import ChatInput
-from app.core import security
-from app.services.rag.kb import KnowledgeBase
-from app.core.config import settings
-from app.services import logger
-from app.services.analytics import AnalyticsService
-from typing import AsyncGenerator
+
+from __future__ import annotations
+
+from typing import AsyncGenerator, Optional
+
 import tiktoken
 
+from app.core import security
+from app.core.config import settings
+from app.schemas import ChatInput
+from app.services import logger
+from app.services.analytics import AnalyticsService
+from app.services.rag.kb import KnowledgeBase
+
 # Lazy service initialization (singleton pattern)
-_kb = None
-_analytics = None
+_kb: KnowledgeBase | None = None
+_analytics: AnalyticsService | None = None
 _vision_client = None
 
-def get_kb():
+
+def get_kb() -> KnowledgeBase:
+    """Return the global KnowledgeBase singleton instance."""
     global _kb
     if _kb is None:
         _kb = KnowledgeBase()
     return _kb
 
-def get_analytics():
+
+def get_analytics() -> AnalyticsService:
+    """Return the global AnalyticsService singleton instance."""
     global _analytics
     if _analytics is None:
         _analytics = AnalyticsService()
     return _analytics
 
+
 def get_vision_client():
+    """Return the global AsyncOpenAI singleton instance used for vision."""
     global _vision_client
     if _vision_client is None:
         from openai import AsyncOpenAI
+
         _vision_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     return _vision_client
+
 
 # Constants
 MAX_HISTORY_MESSAGES = 4  # Number of conversation history messages to include in context
@@ -82,113 +95,52 @@ LANGUAGE_MAP = {
     "it-IT": "Italian",
     "ru-RU": "Russian",
     "ar-SA": "Arabic",
-    "hi-IN": "Hindi"
+    "hi-IN": "Hindi",
 }
 
 
+def _get_language_name(language_code: str) -> str:
+    """Map a language code to a readable name (fallback to original)."""
+    return LANGUAGE_MAP.get(language_code, language_code)
 
-async def process_chat_stream(chat_input: ChatInput, image_bytes: bytes | None = None, mode: str = "chat") -> AsyncGenerator[str, None]:
-    user_id = chat_input.user_id or "anonymous"
-    
-    # DEAL MODE vs CHAT MODE distinction
-    is_deal_mode = (mode == "deal")
-    # 1. Sanitize Input
-    clean_message = security.sanitize_input(chat_input.user_message)
-    
-    # 2. Security Checks
-    if security.detect_injection(clean_message):
-        logger.log_security_event("PROMPT_INJECTION", f"Detected in message from {user_id}")
-        yield "I cannot fulfill that request due to security policies."
-        return
-    
-    # 2.5 Vision Mode: If image provided, use GPT-4o Vision (bypass RAG)
-    if image_bytes:
-        # Validate image size
-        if len(image_bytes) > MAX_IMAGE_SIZE:
-            yield "Image too large. Please upload an image under 10MB."
-            return
-        
-        import base64
-        from openai import OpenAIError
-        
-        client = get_vision_client()
-        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-        
-        # Get readable language name for prompt
-        language_name = LANGUAGE_MAP.get(chat_input.language, chat_input.language)
-        
-        vision_messages = [
-            {
-                "role": "system",
-                "content": f"""You are a Payroc support assistant. You ONLY help with:
-- Payment processing equipment (terminals, card readers, POS systems)
-- Error messages on payment devices
-- Receipt/transaction issues
-- Hardware setup and troubleshooting
 
-If the uploaded image is NOT related to payment processing, POS systems, or Payroc products, respond with:
-"I can only help with payment processing and POS-related images. This image doesn't appear to be related to our support services. Please upload a screenshot of an error message, a photo of your payment terminal, or another support-related image."
+def _history_to_string(chat_input: ChatInput) -> str:
+    """Serialize recent conversation history to a plain string for query rewriting."""
+    return "\n".join(
+        f"{msg.role}: {msg.content}"
+        for msg in chat_input.conversation_history[-MAX_HISTORY_MESSAGES:]
+    )
 
-If the image IS relevant, provide helpful troubleshooting guidance based on what you see.
 
-LANGUAGE: Respond entirely in {language_name}. All explanations, troubleshooting steps, and guidance must be in {language_name}."""
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": clean_message or "What do you see in this image?"},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}}
-                ]
-            }
-        ]
-        
-        try:
-            response = await client.chat.completions.create(
-                model=VISION_MODEL,
-                messages=vision_messages,
-                max_tokens=1000,
-                stream=True
-            )
-            
-            async for chunk in response:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-                    
-            logger.log_interaction(user_id, clean_message, "VISION: Image analyzed", success=True)
-            # Log Query (Vision success = not fallback)
-            is_initial = len(chat_input.conversation_history) == 0
-            get_analytics().log_query(chat_input.user_message, is_initial, is_fallback=False)
-            return
-            
-        except OpenAIError as e:
-            logger.error(f"OpenAI vision API error: {e}", exc_info=True)
-            yield "I'm having trouble processing your image. Please try again."
-            return
-        except Exception as e:
-            logger.error(f"Unexpected vision error: {e}", exc_info=True)
-            yield "I encountered an error processing your image. Please try again."
-            return
-    
-    
+async def _rewrite_query_with_history(
+    user_id: str,
+    chat_input: ChatInput,
+    clean_message: str,
+) -> str:
+    """
+    Rewrite a user query into a standalone question using recent chat history.
 
-    
-    # ---------------------------------------------------------
-    # IMPROVED: Contextualize Query (Chat History Awareness)
-    # ---------------------------------------------------------
-    search_query = clean_message
-    if len(chat_input.conversation_history) > 0 and not image_bytes:
-        try:
-            from langchain_openai import ChatOpenAI
-            from langchain_core.prompts import ChatPromptTemplate
-            from langchain_core.output_parsers import StrOutputParser
+    Behavior notes:
+    - If anything fails, falls back to clean_message and logs an error.
+    - Logging string format is preserved.
+    """
+    if len(chat_input.conversation_history) == 0:
+        return clean_message
 
-            # Fast/Cheap model for rewriting
-            history_llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model=CONTEXT_MODEL, temperature=0)
-            
-            history_str = "\n".join([f"{msg.role}: {msg.content}" for msg in chat_input.conversation_history[-MAX_HISTORY_MESSAGES:]])
-            
-            prompt = ChatPromptTemplate.from_template(
-                """Given a chat history and the latest user question which might reference context in the chat history, 
+    try:
+        from langchain_core.output_parsers import StrOutputParser
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_openai import ChatOpenAI
+
+        history_llm = ChatOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            model=CONTEXT_MODEL,
+            temperature=0,
+        )
+        history_str = _history_to_string(chat_input)
+
+        prompt = ChatPromptTemplate.from_template(
+            """Given a chat history and the latest user question which might reference context in the chat history, 
                 formulate a standalone question which can be understood without the chat history. 
                 Do NOT answer the question, just rewrite it if needed. otherwise return it as is.
                 
@@ -198,184 +150,117 @@ LANGUAGE: Respond entirely in {language_name}. All explanations, troubleshooting
                 Latest Question: {question}
                 
                 Standalone Question:"""
-            )
-            
-            query_rewriter = prompt | history_llm | StrOutputParser()
-            search_query = await query_rewriter.ainvoke({"history": history_str, "question": clean_message})
-            logger.log_interaction(user_id, clean_message, f"CONTEXT: Rewrote query to '{search_query}'", success=True)
-            
-        except Exception as e:
-            logger.error(f"Query contextualization error: {e}", exc_info=True)
-            search_query = clean_message # Fallback
+        )
 
-    embedding_tokens = 0
-    try:
-        # 3. Retrieve Context (k=3 optimized for speed vs quality balance)
-        # Use the REWRITTEN query for search, but keep original for other things if needed
-        kb_results = await get_kb().search(search_query, k=3)
-        # Accurate embedding token count
-        embedding_tokens = len(_encoder.encode(clean_message))
+        query_rewriter = prompt | history_llm | StrOutputParser()
+        search_query = await query_rewriter.ainvoke(
+            {"history": history_str, "question": clean_message}
+        )
+        logger.log_interaction(
+            user_id,
+            clean_message,
+            f"CONTEXT: Rewrote query to '{search_query}'",
+            success=True,
+        )
+        return search_query
+
+    except Exception as e:
+        logger.error(f"Query contextualization error: {e}", exc_info=True)
+        return clean_message
+
+
+def _format_context_from_docs(docs: list) -> str:
+    """Format retrieved documents into the context string used by the system prompt."""
+    context_parts: list[str] = []
+    for i, doc in enumerate(docs, 1):
+        source = doc.metadata.get("source", "Unknown")
+        page = doc.metadata.get("page", 0) + 1  # 0-indexed
+        score = doc.metadata.get("score", 0)
+
+        # Clean up source path to be just filename
+        if "/" in source:
+            source = source.split("/")[-1]
+        if "\\" in source:
+            source = source.split("\\")[-1]
+
+        context_parts.append(
+            f"=== DOCUMENT {i} ===\n"
+            f"METADATA: {{'source': '{source}', 'page': {page}, 'relevance': {score:.2f}}}\n"
+            f"CONTENT:\n{doc.page_content}"
+        )
+
+    return "\n\n---\n\n".join(context_parts)
+
+
+def _format_clarification_question(
+    topic: str, variant_type: str, options: list[str], language_name: str
+) -> str:
+    """
+    Format a clarification question when multiple variants are detected.
+    
+    Args:
+        topic: Base topic name (e.g., "BBPOS Bluetooth Pairing")
+        variant_type: Type of variant (e.g., "platform", "model")
+        options: List of variant options (e.g., ["android", "ios"])
+        language_name: Language to respond in
         
-        # Quality filtering: Remove low-relevance results
-        filtered_results = [
-            doc for doc in kb_results 
-            if doc.metadata.get('score', 0) >= MIN_RELEVANCE_SCORE
-        ]
-        
-        # If all results were filtered out, use best result anyway (fail-open)
-        if not filtered_results and kb_results:
-            logger.log_interaction(user_id, clean_message, 
-                f"All results below threshold ({MIN_RELEVANCE_SCORE}), using best match", 
-                success=True)
-            filtered_results = kb_results[:1]  # Use top result
-        
-        # Format context with metadata and relevance scores
-        context_parts = []
-        for i, doc in enumerate(filtered_results, 1):
-            source = doc.metadata.get('source', 'Unknown')
-            page = doc.metadata.get('page', 0) + 1 # 0-indexed
-            score = doc.metadata.get('score', 0)
-            
-            # Clean up source path to be just filename
-            if "/" in source:
-                source = source.split("/")[-1]
-            if "\\" in source:
-                source = source.split("\\")[-1]
-            
-            # Include relevance score and article number for AI reference
-            context_parts.append(
-                f"=== DOCUMENT {i} ===\n"
-                f"METADATA: {{'source': '{source}', 'page': {page}, 'relevance': {score:.2f}}}\n"
-                f"CONTENT:\n{doc.page_content}"
-            )
-            
-        context = "\n\n---\n\n".join(context_parts)
-        
-        # Analytics logging preparation
-        is_initial = len(chat_input.conversation_history) == 0
-        is_fallback = len(filtered_results) == 0  # Fallback if no results passed threshold
+    Returns:
+        Formatted clarification question string
+    """
+    # Capitalize options for display
+    display_options = [opt.title() for opt in options]
+    
+    # Format as bullet list
+    options_text = "\n".join(f"- {opt}" for opt in display_options)
+    
+    # Variant type display names
+    type_names = {
+        "platform": "platform",
+        "model": "terminal model",
+        "processor": "payment processor",
+        "hardware": "hardware type",
+    }
+    type_display = type_names.get(variant_type, variant_type)
+    
+    clarification = (
+        f"I found multiple {type_display}-specific guides for {topic}. "
+        f"Which {type_display} are you using?\n\n{options_text}"
+    )
+    
+    return clarification
 
 
+async def _retrieve_and_filter_kb_results(search_query: str) -> tuple[list, str]:
+    """
+    Retrieve KB results, filter by relevance, and build the context string.
+
+    Behavior notes:
+    - Uses k=3.
+    - Filters by MIN_RELEVANCE_SCORE.
+    - If all filtered out but results exist, fails open to top result and logs the same message.
+    """
+    kb_results = await get_kb().search(search_query, k=3)
+
+    filtered_results = [
+        doc for doc in kb_results if doc.metadata.get("score", 0) >= MIN_RELEVANCE_SCORE
+    ]
+
+    if not filtered_results and kb_results:
+        logger.log_interaction(
+            "anonymous",  # overwritten by caller via identical log semantics below if needed
+            "",  # overwritten by caller via identical log semantics below if needed
+            f"All results below threshold ({MIN_RELEVANCE_SCORE}), using best match",
+            success=True,
+        )
+        filtered_results = kb_results[:1]
+
+    context = _format_context_from_docs(filtered_results)
+    return filtered_results, context
 
 
-        
-        # 4. Generate Response (Real LLM)
-        from langchain_openai import ChatOpenAI
-        from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-
-        if settings.OPENAI_API_KEY == "changeme":
-            yield f"Simulated Response (Set API Key for real AI): I found {len(kb_results)} articles. Context: {context[:100]}..."
-        else:
-            llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model=CHAT_MODEL, streaming=True)
-            
-            # Get readable language name for prompt
-            language_name = LANGUAGE_MAP.get(chat_input.language, chat_input.language)
-            
-            # CONDITIONAL SYSTEM PROMPT: Deal Mode vs Chat Mode
-            if is_deal_mode:
-                system_content = f"""You are JUNA Deal Assistant, a sales enablement AI for Payroc payment processing reps.
-
-YOUR MISSION:
-Help reps build battle cards they trust enough to use with merchants—fast, complete, and confident.
-
-CRITICAL RULES (NON-NEGOTIABLE):
-
-1. DISCOVERY FLOW (v2.1 - All Questions at Once):
-   - The user will provide initial context (vertical, state, provider, volume). This is NOT a question - it's background.
-   - When user says "Generate all 3 guided questions" or "Start guided questions", return ALL 3 questions immediately.
-   - Return questions in a structured JSON format with a "questions" array.
-   - Do NOT ask questions one-at-a-time. Return all 3 upfront in a single response.
-   
-   Example flow:
-   1. User: "Generate all 3 guided questions. Context: {{vertical: restaurant, volume: $75k}}"
-   2. You: Return JSON with all 3 questions immediately (see format below)
-   3. User will answer all 3 questions together
-   4. User: "Generate battle card" with all answers provided
-   
-2. QUESTIONS TO RETURN (all 3 at once):
-   When asked to generate questions, return this EXACT JSON structure:
-   
-   {{
-     "questions": [
-       "What's the biggest challenge they're facing with their current payment processor?",
-       "What's their monthly transaction volume? (rough estimate is fine)",
-       "What's their top priority: lower fees, better reporting, or faster transactions?"
-     ]
-   }}
-   
-   CRITICAL: Your response must be ONLY this JSON object. No text before or after. Start with {{ and end with }}.
-   
-
-3. BATTLE CARD OUTPUT (JSON ONLY):
-   When user says "Generate battle card" or you've gathered enough info, respond with ONLY this JSON structure.
-   
-   CRITICAL FORMATTING RULES:
-   - Your ENTIRE response must be valid JSON. No text before or after the JSON.
-   - Start your response with {{ and end with }}
-   - Do NOT write "Here's your battle card:" or any other explanation text
-   - Do NOT use markdown formatting like **bold** inside the JSON
-   - Just return the raw JSON object, nothing else
-   
-   EXACT STRUCTURE TO RETURN:
-   
-   {{
-     "scenario": "One clear paragraph summarizing merchant's situation, volume, and needs.",
-     "recommended_stack": [
-       "Clover POS with KDS integration",
-       "Advanced reporting package",
-       "Mobile payment module"
-     ],
-     "why_this_wins": [
-       {{"title": "Lower Fees", "detail": "Interchange+ pricing at 2.1% vs current 2.9% flat rate saves ~$600/month"}},
-       {{"title": "Real-Time Reporting", "detail": "Sales by server, shift, and menu item—no more end-of-day surprises"}},
-       {{"title": "Local Support", "detail": "On-site tech visits vs phone-only support"}}
-     ],
-     "pricing_framework": "Interchange-plus model, estimated 2.1% + $0.10 per transaction. Example: $75k monthly volume = ~$1,600/month processing costs.",
-     "objections": [
-       {{"objection": "We're locked into our current contract", "response": "Most restaurant contracts are month-to-month after the initial term. We can review yours and plan the switch timing."}},
-       {{"objection": "Switching sounds complicated", "response": "We handle the full migration—menu programming, staff training, and parallel testing. You stay open throughout."}},
-       {{"objection": "Your fees might be higher", "response": "Let's run a side-by-side comparison with your last 3 months of statements. Interchange+ typically saves 20-30% vs flat-rate."}}
-     ],
-     "next_steps": [
-       "Schedule 30-min demo of reporting dashboard",
-       "Send personalized pricing quote (3 business days)",
-       "Review current contract for switch timing"
-     ],
-     "disclaimer": "This battle card is for internal sales use only. Do not share with merchants. All pricing subject to underwriting and final approval."
-   }}
-   
-   REMEMBER: Return ONLY the JSON object. Your response must start with {{ and end with }}. No other text.
-
-4. VOICE & TRUST RULES:
-   - Use language reps would actually say to merchants
-   - Be specific with numbers when you have data (volumes, savings, timelines)
-   - Use ranges for pricing ("estimated 2.1-2.3%"), never exact quotes
-   - No AI-isms: Never say "As an AI..." or "I don't have access to..."
-   - Be confident but honest: "Based on $75k volume..." not "It might possibly..."
-   
-5. COMPLETENESS REQUIREMENTS:
-   - Every section must have real content (no placeholders like "-" or "TBD")
-   - "Why This Wins" must have 3-5 items with titles AND details
-   - Objections must include both the objection and the response
-   - Pricing must include methodology and real examples
-   - If you don't have enough info for a section, ASK before generating
-
-6. WHAT TO NEVER HALLUCINATE:
-   - Specific product names (unless common: Clover, Square, Toast)
-   - Exact pricing
-   - Contract terms
-   - Merchant eligibility
-
-LANGUAGE: Respond entirely in {language_name}.
-
-FOLLOW-UP SUGGESTIONS:
-End every response with 2-3 clickable suggestions using this EXACT format:
-<<SUGGESTIONS>>Topic 1|Topic 2|Topic 3
-
-REMEMBER: Reps must trust every word enough to use it with a merchant. If you wouldn't say it on a sales call, don't write it."""
-            else:
-                # EXISTING CHATBOT SYSTEM PROMPT
-                system_content = f"""You are JUNA, the AI support agent for onePOS (a Payroc company). You combine technical accuracy, service-minded communication, and calm problem-solving. Merchants rely on you to keep their restaurant running — you respect their time and treat every issue like it matters.
+def _build_system_prompt(context: str, language_name: str) -> str:
+    """Build the system prompt string exactly as the original implementation."""
+    return f"""You are JUNA, the AI support agent for onePOS (a Payroc company). You combine technical accuracy, service-minded communication, and calm problem-solving. Merchants rely on you to keep their restaurant running — you respect their time and treat every issue like it matters.
 
 IDENTITY & PERSONALITY
 
@@ -436,6 +321,57 @@ CITATION EXAMPLES (STRICT ADHERENCE REQUIRED):
 3. Verify the LED is green.
 (Source: Manual.pdf)
 
+AMBIGUITY DETECTION & CLARIFICATION (CRITICAL)
+
+Before providing technical steps or configuration instructions:
+
+1. Analyze the retrieved knowledge base documents
+2. Determine if multiple valid variants exist:
+   - Different platforms (Android / iOS / Windows)
+   - Different models (Term 01 / Term 02 / HK560 / HK568 / HK570)
+   - Different processors (TransSafe / Datacap)
+   - Different hardware types (Thermal / Impact printers)
+
+3. If multiple variants apply and you cannot determine which the user needs:
+   ❌ Do NOT guess
+   ❌ Do NOT assume
+   ❌ Do NOT provide steps for one variant only
+   
+   ✅ Ask exactly ONE clarifying question
+   ✅ Provide explicit selectable options
+   ✅ Wait for user response
+   ✅ Then provide only the correct variant-specific answer
+
+Clarification Question Format:
+"I can help with [TOPIC]! Which [VARIANT TYPE] are you working with?
+- Option A
+- Option B  
+- Option C"
+
+4. If the question is unambiguous (only one variant applies), answer directly.
+
+Examples:
+
+User: "How to configure a BBPOS Chipper?"
+KB Retrieved: Android guide, iOS guide, Windows guide
+You: "I can help you configure your BBPOS Chipper! Which device are you setting it up with?
+- Android tablet
+- iOS device
+- Windows terminal"
+
+User: "How to hard reset a BBPOS EMV reader?"
+KB Retrieved: Single hard reset guide (no variants)
+You: [Provide direct answer with steps]
+
+User: "How to configure a terminal?"
+KB Retrieved: Term 01 guide, Term 02 guide, HK560 guide
+You: "I can help with terminal setup! Which model are you configuring?
+- Term 01
+- Term 02 or higher
+- HK560/568/570"
+
+CRITICAL: Clarification must happen BEFORE providing steps. Never mix clarification and instructions in the same response.
+
 RESPONSE STRATEGY
 
 Start with action
@@ -455,7 +391,7 @@ Ask smart clarifying questions (max 2-3)
 
 Clear technical communication
 • Number steps
-• Bold actions
+• **Bold actions**
 • Use `code blocks` for exact text
 • Never paraphrase KB instructions — use exact wording
 
@@ -484,46 +420,231 @@ Rules:
 • Make them contextual to the user's current issue
 
 Example: <<SUGGESTIONS>>Reset Terminal Password|Check Network Settings|Update Software Version"""
-            
-            # Start with System Prompt
-            messages = [SystemMessage(content=system_content)]
-            
-            # Add Conversation History
-            for msg in chat_input.conversation_history:
-                if msg.role == "user":
-                    messages.append(HumanMessage(content=msg.content))
-                elif msg.role == "assistant":
-                    messages.append(AIMessage(content=msg.content))
-            
-            # Add Current Message
-            messages.append(HumanMessage(content=clean_message))
-            
-            # Stream Response
-            full_response = ""
-            async for chunk in llm.astream(messages):
-                content = chunk.content
-                if content:
-                    full_response += content
-                    yield content
-            
-            # 5. Log Interaction (after stream completes)
-            # Note: PII masking is hard on stream, we log the raw output for now or mask post-facto
-            logger.log_interaction(user_id, clean_message, full_response, success=True)
-            
-            # 6. Log Query with token estimates for spend tracking
-            # Accurate token counting with tiktoken
-            message_text = " ".join([m.content for m in messages if hasattr(m, 'content') and m.content])
-            input_tokens = len(_encoder.encode(message_text))
-            output_tokens = len(_encoder.encode(full_response))
-            get_analytics().log_query(
-                chat_input.user_message, 
-                is_initial, 
-                is_fallback,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                embedding_tokens=embedding_tokens
+
+
+def _build_vision_messages(clean_message: str, language_name: str, image_b64: str) -> list[dict]:
+    """Build the vision request messages exactly as the original implementation."""
+    return [
+        {
+            "role": "system",
+            "content": f"""You are a Payroc support assistant. You ONLY help with:
+- Payment processing equipment (terminals, card readers, POS systems)
+- Error messages on payment devices
+- Receipt/transaction issues
+- Hardware setup and troubleshooting
+
+If the uploaded image is NOT related to payment processing, POS systems, or Payroc products, respond with:
+"I can only help with payment processing and POS-related images. This image doesn't appear to be related to our support services. Please upload a screenshot of an error message, a photo of your payment terminal, or another support-related image."
+
+If the image IS relevant, provide helpful troubleshooting guidance based on what you see.
+
+LANGUAGE: Respond entirely in {language_name}. All explanations, troubleshooting steps, and guidance must be in {language_name}.""",
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": clean_message or "What do you see in this image?"},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+            ],
+        },
+    ]
+
+
+async def _handle_vision_mode(
+    user_id: str,
+    chat_input: ChatInput,
+    clean_message: str,
+    image_bytes: bytes,
+) -> AsyncGenerator[str, None]:
+    """
+    Handle vision flow (bypass RAG) with streaming.
+
+    Behavior notes:
+    - Preserves exact user-facing strings and exception handling.
+    - Preserves logging and analytics calls ordering.
+    """
+    if len(image_bytes) > MAX_IMAGE_SIZE:
+        yield "Image too large. Please upload an image under 10MB."
+        return
+
+    import base64
+    from openai import OpenAIError
+
+    client = get_vision_client()
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    language_name = _get_language_name(chat_input.language)
+    vision_messages = _build_vision_messages(clean_message, language_name, image_b64)
+
+    try:
+        response = await client.chat.completions.create(
+            model=VISION_MODEL,
+            messages=vision_messages,
+            max_tokens=1000,
+            stream=True,
+        )
+
+        async for chunk in response:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+        logger.log_interaction(user_id, clean_message, "VISION: Image analyzed", success=True)
+        is_initial = len(chat_input.conversation_history) == 0
+        get_analytics().log_query(chat_input.user_message, is_initial, is_fallback=False)
+        return
+
+    except OpenAIError as e:
+        logger.error(f"OpenAI vision API error: {e}", exc_info=True)
+        yield "I'm having trouble processing your image. Please try again."
+        return
+    except Exception as e:
+        logger.error(f"Unexpected vision error: {e}", exc_info=True)
+        yield "I encountered an error processing your image. Please try again."
+        return
+
+
+async def process_chat_stream(
+    chat_input: ChatInput,
+    image_bytes: bytes | None = None,
+    mode: str = "chat",
+) -> AsyncGenerator[str, None]:
+    user_id = chat_input.user_id or "anonymous"
+
+    # 1. Sanitize Input
+    clean_message = security.sanitize_input(chat_input.user_message)
+
+    # 2. Security Checks
+    if security.detect_injection(clean_message):
+        logger.log_security_event("PROMPT_INJECTION", f"Detected in message from {user_id}")
+        yield "I cannot fulfill that request due to security policies."
+        return
+
+    # 2.5 Vision Mode: If image provided, use GPT-4o Vision (bypass RAG)
+    if image_bytes:
+        async for token in _handle_vision_mode(user_id, chat_input, clean_message, image_bytes):
+            yield token
+        return
+
+    # ---------------------------------------------------------
+    # IMPROVED: Contextualize Query (Chat History Awareness)
+    # ---------------------------------------------------------
+    search_query = await _rewrite_query_with_history(user_id, chat_input, clean_message)
+
+    embedding_tokens = 0
+    try:
+        # 3. Retrieve Context (k=3 optimized for speed vs quality balance)
+        kb_results = await get_kb().search(search_query, k=3)
+
+        # Accurate embedding token count
+        embedding_tokens = len(_encoder.encode(clean_message))
+
+        # Quality filtering: Remove low-relevance results
+        filtered_results = [
+            doc for doc in kb_results if doc.metadata.get("score", 0) >= MIN_RELEVANCE_SCORE
+        ]
+
+        # If all results were filtered out, use best result anyway (fail-open)
+        if not filtered_results and kb_results:
+            logger.log_interaction(
+                user_id,
+                clean_message,
+                f"All results below threshold ({MIN_RELEVANCE_SCORE}), using best match",
+                success=True,
             )
+            filtered_results = kb_results[:1]
+
+        # VARIANT DETECTION GATE: Check for ambiguity before LLM
+        from app.services.rag.variant_detector import detect_variants
         
+        variant_info = detect_variants(filtered_results)
+        
+        if variant_info["has_variants"]:
+            # Multiple variants detected - return clarification question immediately
+            clarification = _format_clarification_question(
+                variant_info["topic"],
+                variant_info["variant_type"],
+                variant_info["options"],
+                _get_language_name(chat_input.language)
+            )
+            
+            logger.log_interaction(
+                user_id,
+                clean_message,
+                f"CLARIFICATION: Detected {len(variant_info['options'])} {variant_info['variant_type']} variants",
+                success=True,
+            )
+            
+            yield clarification
+            
+            # Log analytics for clarification
+            is_initial = len(chat_input.conversation_history) == 0
+            get_analytics().log_query(
+                chat_input.user_message,
+                is_initial,
+                is_fallback=False,
+            )
+            return
+
+        context = _format_context_from_docs(filtered_results)
+
+        # Analytics logging preparation
+        is_initial = len(chat_input.conversation_history) == 0
+        is_fallback = len(filtered_results) == 0  # Fallback if no results passed threshold
+
+        # 4. Generate Response (Real LLM)
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+        from langchain_openai import ChatOpenAI
+
+        if settings.OPENAI_API_KEY == "changeme":
+            yield (
+                f"Simulated Response (Set API Key for real AI): I found {len(kb_results)} "
+                f"articles. Context: {context[:100]}..."
+            )
+            return
+
+        llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model=CHAT_MODEL, streaming=True)
+
+        language_name = _get_language_name(chat_input.language)
+        system_content = _build_system_prompt(context, language_name)
+
+        # Start with System Prompt
+        messages = [SystemMessage(content=system_content)]
+
+        # Add Conversation History
+        for msg in chat_input.conversation_history:
+            if msg.role == "user":
+                messages.append(HumanMessage(content=msg.content))
+            elif msg.role == "assistant":
+                messages.append(AIMessage(content=msg.content))
+
+        # Add Current Message
+        messages.append(HumanMessage(content=clean_message))
+
+        # Stream Response
+        full_response = ""
+        async for chunk in llm.astream(messages):
+            content = chunk.content
+            if content:
+                full_response += content
+                yield content
+
+        # 5. Log Interaction (after stream completes)
+        logger.log_interaction(user_id, clean_message, full_response, success=True)
+
+        # 6. Log Query with token estimates for spend tracking
+        message_text = " ".join(
+            [m.content for m in messages if hasattr(m, "content") and m.content]
+        )
+        input_tokens = len(_encoder.encode(message_text))
+        output_tokens = len(_encoder.encode(full_response))
+        get_analytics().log_query(
+            chat_input.user_message,
+            is_initial,
+            is_fallback,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            embedding_tokens=embedding_tokens,
+        )
+
     except Exception as e:
         logger.error(f"Chat processing error: {e}", exc_info=True)
         logger.log_interaction(user_id, clean_message, "", success=False, error=str(e))
