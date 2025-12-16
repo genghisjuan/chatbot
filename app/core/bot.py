@@ -215,10 +215,14 @@ def _format_clarification_question(
     
     # Variant type display names
     type_names = {
-        "platform": "platform",
-        "model": "terminal model",
+        "terminal_model": "terminal model",
+        "terminal_type": "platform",
+        "terminal_config": "terminal configuration",
+        "printer": "printer type",
         "processor": "payment processor",
-        "hardware": "hardware type",
+        "emv_reader": "EMV reader",
+        "hardware_type": "hardware type",
+        "onepos_product": "onePOS product",
     }
     type_display = type_names.get(variant_type, variant_type)
     

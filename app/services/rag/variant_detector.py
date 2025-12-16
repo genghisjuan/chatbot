@@ -19,14 +19,58 @@ class VariantInfo(TypedDict):
 
 # Variant indicator patterns (case-insensitive)
 VARIANT_PATTERNS = {
-    "platform": ["android", "ios", "windows"],
-    "model": [
-        "term 01", "term-01", "term01",
-        "term 02", "term-02", "term02",
-        "hk560", "hk568", "hk570"
+    # Terminal Models
+    "terminal_model": [
+        "hisense 560", "hisense-560", "hisense560", "hk560",
+        "hisense 570", "hisense-570", "hisense570", "hk570",
+        "hisense 568", "hisense-568", "hisense568", "hk568"
     ],
-    "processor": ["transafe", "datacap", "heartland"],
-    "hardware": ["thermal", "impact", "snbc", "star", "epson"],
+    
+    # Terminal Operating Systems
+    "terminal_type": ["android", "ios", "windows"],
+    
+    # Terminal Configuration Numbers
+    "terminal_config": [
+        "terminal 1", "terminal-1", "terminal1", "term 1", "term-1", "term01", "term 01",
+        "terminal 2", "terminal-2", "terminal2", "term 2", "term-2", "term02", "term 02",
+        "terminal 3", "terminal-3", "terminal3", "term 3", "term-3", "term03", "term 03",
+        "terminal 3+", "terminal-3+", "term 3+"
+    ],
+    
+    # Printer Types
+    "printer": ["thermal", "impact", "snbc", "star", "epson"],
+    
+    # Payment Processors
+    "processor": ["transafe", "datacap", "heartland", "tsys", "tsysf"],
+    
+    # EMV Readers
+    "emv_reader": [
+        "lane 3000", "lane-3000", "lane3000",
+        "bbpos",
+        "augusta", "idt", "idtech"
+    ],
+    
+    # Hardware Types
+    "hardware_type": [
+        "terminal", "printer", 
+        "emv reader", "emv-reader", 
+        "cash drawer", "cash-drawer",
+        "kitchen display system", "kds",
+        "handheld"
+    ],
+    
+    # onePOS Products
+    "onepos_product": [
+        "foh terminal", "foh-terminal", "front of house",
+        "boh", "management console", "boh-management-console", "back of house",
+        "onemetrix",
+        "online ordering", "online-ordering",
+        "chowly",
+        "lunchbox",
+        "oneview",
+        "oneconnect",
+        "oneschedule"
+    ]
 }
 
 
