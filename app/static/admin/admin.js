@@ -366,8 +366,24 @@ function renderFeedbackList(data) {
         el.className = 'feedback-item';
         el.onclick = () => el.classList.toggle('expanded');
 
-        // Backend returns UTC timestamp without Z, so add it for proper parsing
-        const utcTimestamp = item.timestamp.endsWith('Z') ? item.timestamp : item.timestamp + 'Z';
+        // Normalize timestamp: handle timezone formats and truncate to milliseconds (3 digits)
+        let utcTimestamp = item.timestamp;
+
+        // Replace +00:00 offset with Z
+        if (utcTimestamp.includes('+00:00')) {
+            utcTimestamp = utcTimestamp.replace('+00:00', 'Z');
+        }
+        // If no timezone info at all, assume UTC
+        else if (!utcTimestamp.includes('Z') && !utcTimestamp.includes('+') && !utcTimestamp.includes('-', 10)) {
+            utcTimestamp += 'Z';
+        }
+
+        // Truncate microseconds to milliseconds (6 digits -> 3 digits)
+        // Match pattern like .123456Z or .123456+00:00 and truncate to .123
+        utcTimestamp = utcTimestamp.replace(/\.(\d{6,})([Z+\-])/, (match, digits, tz) => {
+            return '.' + digits.substring(0, 3) + tz;
+        });
+
         const date = new Date(utcTimestamp);
 
         // Display in EST timezone
