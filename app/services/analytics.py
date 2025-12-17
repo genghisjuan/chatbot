@@ -248,13 +248,13 @@ class AnalyticsService:
         """
         # Define the process to run in the background
         def _process_and_save():
-            category = "General Inquiry"
+            category = "General Inquiry"  # Default fallback
             try:
                 category = self.categorize_query(message)
-            except Exception:
-                 # categorize_query handles its own errors, but extra safety
-                pass
-                
+            except Exception as e:
+                # Log but don't let categorization failure block the insert
+                logger.error(f"Categorization failed (using fallback): {e}")
+            
             db: Session = self.SessionLocal()
             try:
                 log_entry = QueryLog(
@@ -268,11 +268,13 @@ class AnalyticsService:
                 )
                 db.add(log_entry)
                 db.commit()
+                logger.info(f"Query logged: category={category}, tokens={input_tokens+output_tokens}")
             except Exception as e:
-                logger.error(f"Failed to save query log: {e}")
+                logger.error(f"Failed to save query log: {e}", exc_info=True)
+                db.rollback()
             finally:
                 db.close()
-                
+            
         # Fire and forget on the loop to avoid blocking main thread with sync operations (LLM + DB)
         try:
             loop = asyncio.get_running_loop()
