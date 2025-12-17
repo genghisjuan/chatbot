@@ -3,16 +3,36 @@
    ============================================ */
 
 /* CSS Variables - JUNA Design System */
+/* CSS Variables - JUNA Design System (Desktop Parity 1:1) */
 :root {
-    --bg-primary: #0B0F19;
-    --bg-secondary: #0F1424;
-    --text-primary: #FFFFFF;
-    --text-secondary: rgba(255, 255, 255, 0.7);
+    /* Mapped to Desktop styles.css */
+    --bg-primary: #0d0d14;
+    /* was --main-bg */
+    --bg-secondary: #12121a;
+    /* was --sidebar-bg */
+    --text-primary: #ffffff;
+    /* was --text-color */
+    --text-secondary: #6b7280;
+    /* was --text-muted */
     --accent-primary: #667eea;
-    --border-color: rgba(255, 255, 255, 0.1);
-    --message-bot-bg: #1e2433;
-    /* Slightly lighter for better text contrast */
+    /* was --accent-color */
+    --border-color: #1e1e2e;
+    /* was --glass-border */
+    --message-bot-bg: #12121a;
+    /* Desktop .bot-message bg */
     --message-user-bg: #667eea;
+    /* was --user-bg */
+
+    /* Additional Desktop Tokens */
+    --input-bg: #1a1a28;
+    --input-border: #1e1e2e;
+    --card-bg: #1a1a28;
+
+    /* Motion tokens - Phase 1A */
+    --juna-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --juna-dur-micro: 100ms;
+    --juna-dur-overlay: 200ms;
+    --juna-dur-drawer: 280ms;
 }
 
 /* Reset & Base */
@@ -29,10 +49,12 @@ body {
 }
 
 body {
-    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    /* Desktop Font */
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 16px;
+    font-size: 13px;
+    /* Desktop Base Size */
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -46,7 +68,7 @@ body {
 
 /* Header */
 .mobile-header {
-    background: var(--bg-secondary);
+    background: var(--bg-primary);
     border-bottom: 1px solid var(--border-color);
     padding: 16px 20px;
     flex-shrink: 0;
@@ -59,18 +81,39 @@ body {
     max-width: 100%;
 }
 
-.brand {
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
+.menu-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    padding: 10px;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+    margin: -10px 0;
+    /* compensate for padding to maintain header height */
+}
+
+.menu-btn:active {
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 0.7;
+}
+
+.menu-btn svg {
+    display: block;
 }
 
 .status-indicator {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 14px;
-    color: var(--text-secondary);
+    font-size: 12px;
+    color: #48bb78;
+    font-weight: 500;
 }
 
 .status-dot {
@@ -93,43 +136,24 @@ body {
     }
 }
 
-/* Message entrance animation */
-@keyframes messageSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(8px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
 /* Chat Container */
 .chat-container {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
-    /* Balanced padding */
+    padding: 20px;
     -webkit-overflow-scrolling: touch;
-    scroll-behavior: smooth;
-    /* Smooth auto-scroll */
 }
 
 .chat-messages {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    /* Tighter for better conversation flow */
 }
 
 /* Messages */
 .message-wrapper {
     display: flex;
     width: 100%;
-    animation: messageSlideIn 0.25s ease-out;
-    /* Smooth entrance */
 }
 
 .message-wrapper.bot {
@@ -140,16 +164,414 @@ body {
     justify-content: flex-end;
 }
 
+/* ============================================
+   Mobile Drawer (Sidebar)
+   ============================================ */
+
+/* Drawer Backdrop */
+.drawer-backdrop {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.drawer-backdrop.active {
+    display: block;
+    opacity: 1;
+}
+
+/* Mobile Drawer Container */
+.mobile-drawer {
+    position: fixed;
+    top: 0;
+    left: -100%;
+    width: 250px;
+    max-width: 280px;
+    height: 100%;
+    background: var(--bg-secondary);
+    z-index: 1000;
+    transition: left 0.3s ease;
+    overflow-y: auto;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+}
+
+.mobile-drawer.active {
+    left: 0;
+}
+
+/* Prevent body scroll when drawer is open */
+body.drawer-open {
+    overflow: hidden;
+}
+
+/* Drawer Header (Close Button) */
+.drawer-header {
+    display: flex;
+    justify-content: flex-end;
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.drawer-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s ease;
+}
+
+.drawer-close-btn:hover,
+.drawer-close-btn:active {
+    color: var(--text-primary);
+}
+
+/* Drawer Content */
+.drawer-content {
+    padding: 16px;
+}
+
+/* Drawer Brand (Logo) */
+.drawer-brand {
+    text-align: center;
+    margin-bottom: 16px;
+    padding: 0 8px;
+}
+
+.drawer-brand img {
+    max-width: 75% !important;
+    height: auto;
+}
+
+/* Drawer New Chat Button */
+.drawer-new-chat-btn {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--accent-primary);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 16px;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.drawer-new-chat-btn:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+}
+
+/* Drawer Sections */
+.drawer-section {
+    margin-bottom: 14px;
+}
+
+.drawer-section-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.drawer-section-label:hover,
+.drawer-section-label:active {
+    background: var(--bg-secondary);
+}
+
+.drawer-section-label i.fa-chevron-down {
+    transition: transform 0.2s ease;
+}
+
+.drawer-section-label[aria-expanded="true"] i.fa-chevron-down {
+    transform: rotate(180deg);
+}
+
+/* Drawer List */
+.drawer-section-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 4px;
+}
+
+.drawer-section-list.hidden {
+    display: none;
+}
+
+.drawer-list-item {
+    padding: 10px 12px;
+    color: #9ca3af;
+    font-size: 13px;
+    line-height: 1.3;
+    cursor: pointer;
+    border-radius: 4px;
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background var(--juna-dur-micro) var(--juna-ease),
+        color var(--juna-dur-micro) var(--juna-ease),
+        transform var(--juna-dur-micro) var(--juna-ease);
+    min-height: 44px;
+}
+
+.drawer-list-item:hover,
+.drawer-list-item:active {
+    background: rgba(255, 255, 255, 0.04);
+    color: #e5e7eb;
+}
+
+.drawer-list-item:active {
+    transform: scale(0.98);
+}
+
+.drawer-list-item.active {
+    background: rgba(102, 126, 234, 0.12);
+    color: var(--accent-primary);
+}
+
+.drawer-list-item i {
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+/* ============================================
+   Markdown Element Styling (Bot Messages)
+   ============================================ */
+
+/* Paragraphs */
+.message-wrapper.bot .message p {
+    margin: 0 0 10px 0;
+    line-height: 1.5;
+}
+
+.message-wrapper.bot .message p:last-child {
+    margin-bottom: 0;
+}
+
+/* Headings */
+.message-wrapper.bot .message h1,
+.message-wrapper.bot .message h2,
+.message-wrapper.bot .message h3,
+.message-wrapper.bot .message h4 {
+    margin: 14px 0 6px 0;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.message-wrapper.bot .message h1:first-child,
+.message-wrapper.bot .message h2:first-child,
+.message-wrapper.bot .message h3:first-child,
+.message-wrapper.bot .message h4:first-child {
+    margin-top: 0;
+}
+
+.message-wrapper.bot .message h1 {
+    font-size: 1.4em;
+}
+
+.message-wrapper.bot .message h2 {
+    font-size: 1.25em;
+}
+
+.message-wrapper.bot .message h3 {
+    font-size: 1.1em;
+}
+
+.message-wrapper.bot .message h4 {
+    font-size: 1em;
+}
+
+/* Lists */
+.message-wrapper.bot .message ul,
+.message-wrapper.bot .message ol {
+    margin: 10px 0 14px 0;
+    padding-left: 22px;
+    line-height: 1.7;
+}
+
+.message-wrapper.bot .message li {
+    margin-bottom: 6px;
+}
+
+/* Inline Code */
+.message-wrapper.bot .message code {
+    background: rgba(0, 0, 0, 0.05);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+}
+
+/* Code Blocks */
+.message-wrapper.bot .message pre {
+    background: rgba(0, 0, 0, 0.05);
+    padding: 10px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 10px 0;
+    white-space: pre;
+}
+
+.message-wrapper.bot .message pre code {
+    background: none;
+    padding: 0;
+    font-size: 0.85em;
+    line-height: 1.5;
+}
+
+/* Blockquotes */
+.message-wrapper.bot .message blockquote {
+    margin: 10px 0;
+    padding-left: 14px;
+    border-left: 3px solid rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.7);
+    font-style: italic;
+}
+
+/* Links */
+.message-wrapper.bot .message a {
+    color: #667eea;
+    text-decoration: underline;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.message-wrapper.bot .message a:hover,
+.message-wrapper.bot .message a:active {
+    color: #764ba2;
+}
+
+/* Tables */
+.message-wrapper.bot .message table {
+    border-collapse: collapse;
+    margin: 10px 0;
+    width: 100%;
+    font-size: 0.9em;
+}
+
+.message-wrapper.bot .message th,
+.message-wrapper.bot .message td {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    padding: 6px;
+    text-align: left;
+}
+
+.message-wrapper.bot .message th {
+    background: rgba(0, 0, 0, 0.05);
+    font-weight: 600;
+}
+
+/* ============================================
+   Message Rating Controls (Desktop Parity)
+   ============================================ */
+
+/* Message Wrapper Base */
+.message-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.message-wrapper.bot {
+    align-items: flex-start;
+    /* Bot messages and actions align left */
+}
+
+.message-wrapper.user {
+    align-items: flex-end;
+    /* User messages align right */
+}
+
+/* Actions Row - aligns with message bubble */
+.message-wrapper.bot .actions-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    margin-left: 0;
+    align-self: flex-start;
+    /* Force left alignment */
+}
+
+.feedback-buttons {
+    display: flex;
+    gap: 8px;
+    opacity: 1;
+    /* Always visible on mobile (no hover state) */
+    flex-shrink: 0;
+}
+
+.feedback-btn {
+    width: 36px;
+    /* Larger for touch (desktop: 28px) */
+    height: 36px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 0.9em;
+    padding: 0;
+}
+
+.feedback-btn:active {
+    background: rgba(102, 126, 234, 0.1);
+    border-color: #667eea;
+    color: #667eea;
+}
+
+.feedback-btn.active-up {
+    background: rgba(72, 187, 120, 0.2);
+    color: #48bb78;
+    border-color: #48bb78;
+}
+
+.feedback-btn.active-down {
+    background: rgba(229, 62, 62, 0.2);
+    color: #e53e3e;
+    border-color: #e53e3e;
+}
+
+/* ============================================
+   Composer Container
+   ============================================ */
+
 .message {
     max-width: 80%;
-    padding: 10px 14px;
-    /* Slightly reduced for better density */
+    padding: 11px 13px;
     border-radius: 12px;
-    font-size: 15px;
-    line-height: 1.6;
-    /* Improved readability */
-    letter-spacing: 0.01em;
-    /* Subtle legibility boost */
+    font-size: 14px;
+    line-height: 1.5;
 }
 
 .message-wrapper.bot .message {
@@ -165,87 +587,318 @@ body {
 
 /* Composer */
 .composer-container {
-    background: var(--bg-secondary);
+    background: var(--bg-primary);
     border-top: 1px solid var(--border-color);
-    padding: 12px 16px;
-    /* Reduced for better density */
-    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    padding: 16px 20px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
     flex-shrink: 0;
 }
 
-.input-wrapper {
+/* Single Unified Pill Container */
+.composer-pill {
     display: flex;
     align-items: center;
-    gap: 12px;
-    background: var(--bg-primary);
-    border: 2px solid var(--border-color);
-    border-radius: 24px;
-    padding: 8px 12px;
-    transition: border-color 0.2s ease;
+    gap: 8px;
+    background: var(--bg-secondary);
+    /* Desktop parity */
+    border: 1px solid var(--border-color);
+    /* Desktop parity (1px) */
+    border-radius: 999px;
+    padding: 6px 6px 6px 12px;
 }
 
-/* Input focus state */
-.input-wrapper:focus-within {
-    border-color: rgba(102, 126, 234, 0.4);
-}
-
-.action-btn,
-.send-btn {
+/* Embedded Buttons (+ and Mic) */
+.pill-btn {
     background: transparent;
     border: none;
     color: var(--text-secondary);
     font-size: 18px;
-    min-width: 44px;
-    /* WCAG AAA touch target */
-    min-height: 44px;
+    width: 40px;
+    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.2s ease;
-    /* Smooth all properties */
-    border-radius: 8px;
-    /* For focus ring */
+    border-radius: 50%;
+    transition: background-color var(--juna-dur-micro) var(--juna-ease),
+        opacity var(--juna-dur-micro) var(--juna-ease),
+        transform var(--juna-dur-micro) var(--juna-ease);
 }
 
-.action-btn:hover,
-.action-btn:focus {
+.pill-btn:active {
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 0.8;
+    transform: scale(0.94);
+}
+
+/* Input (Flexible, Dominant) */
+.pill-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
     color: var(--text-primary);
+    font-size: 15px;
+    font-family: inherit;
+    padding: 8px 4px;
 }
 
-.send-btn {
-    color: var(--accent-primary);
+.pill-input::placeholder {
+    color: var(--text-secondary);
 }
+
+/* Send Button (Contained Circular) */
+.pill-send-btn {
+    background: var(--accent-primary);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    font-size: 16px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background var(--juna-dur-micro) var(--juna-ease),
+        transform var(--juna-dur-micro) var(--juna-ease),
+        opacity var(--juna-dur-micro) var(--juna-ease);
+}
+
+.pill-send-btn:active {
+    transform: scale(0.94);
+    opacity: 0.9;
+}
+
+.pill-send-btn i {
+    transform: translateX(-2px);
+}
+
+/* Stop Button Mode (Red) */
+.pill-send-btn.stop-mode {
+    background: #e53e3e;
+}
+
+.pill-send-btn.stop-mode:active {
+    background: #c53030;
+}
+
+.pill-send-btn.stop-mode i {
+    transform: translateX(-1px);
+}
+
+/* ============================================
+   Image Preview
+   ============================================ */
+
+.image-preview {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    position: relative;
+}
+
+.image-preview img {
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 2px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.image-preview span {
+    flex: 1;
+    font-size: 14px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.remove-image-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg-primary);
+    border: 2px solid var(--border-color);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+
+
+/* ============================================
+   ChatGPT-Style Action Menu (Overrides)
+   ============================================ */
+
+/* Floating Popover Container */
+.action-menu {
+    position: fixed !important;
+    bottom: 80px !important;
+    /* Above composer */
+    left: 16px !important;
+    right: auto !important;
+    width: 250px !important;
+    background: #12121a !important;
+    /* Desktop parity */
+    border: 1px solid var(--border-color) !important;
+    border-radius: 12px !important;
+    padding: 6px !important;
+    z-index: 2000;
+    display: none;
+    flex-direction: column;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    animation: scaleIn 0.15s ease-out !important;
+    transform-origin: bottom left;
+}
+
+.action-menu.show {
+    display: flex !important;
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* Hide Header */
+.menu-header {
+    display: none !important;
+}
+
+/* Menu Items Styling */
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px !important;
+    background: transparent;
+    border: none;
+    color: var(--text-primary) !important;
+    font-size: 13px !important;
+    text-align: left;
+    min-height: auto !important;
+    border-radius: 6px !important;
+    /* Rounded items */
+    border-bottom: none !important;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.menu-item:hover,
+.menu-item:active {
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.menu-item i:first-child {
+    width: 20px;
+    text-align: center;
+    font-size: 14px !important;
+    color: inherit !important;
+    opacity: 0.8;
+}
+
+.menu-value {
+    color: var(--text-muted) !important;
+    margin-left: auto;
+    font-size: 0.9em;
+}
+
+/* Hide chevron arrows to match ChatGPT clean look */
+.menu-item i.fa-chevron-right {
+    display: none !important;
+}
+
+/* Transparent backdrop */
+.menu-backdrop {
+    background: transparent !important;
+}
+
+
+/* Specific fix for Language Menu (needs header for Back button) */
+#languageMenu .menu-header {
+    display: flex !important;
+    justify-content: space-between;
+    /* OR align-items: center */
+    padding: 10px 12px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: #ececec !important;
+}
+
+/* Grid Layout for Icons (Desktop Parity) */
+.menu-actions-grid {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px 4px;
+    gap: 12px;
+}
+
+.menu-item.grid-item {
+    width: auto !important;
+    flex: 1;
+    justify-content: center !important;
+    padding: 12px !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-radius: 12px !important;
+}
+
+.menu-item.grid-item i {
+    font-size: 1.25em !important;
+    width: auto !important;
+    /* Allow specific icons (TTS) to override color */
+    color: inherit;
+}
+
+.menu-item.grid-item:active {
+    background: rgba(255, 255, 255, 0.15) !important;
+    transform: scale(0.96);
+}
+
+
+/* Screen Reader Only Utility */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+#languageMenu .back-btn {
+    color: #ececec !important;
+}
+
+#actionMenu .menu-header {
+    display: none !important;
+}
+
 
 .send-btn:hover,
 .send-btn:focus {
     color: #5568d3;
-}
-
-/* Button press feedback */
-.send-btn:active,
-.action-btn:active {
-    transform: scale(0.95);
-    transition: transform 0.1s ease;
-}
-
-/* Focus ring for accessibility */
-.send-btn:focus-visible,
-.action-btn:focus-visible {
-    outline: 2px solid var(--accent-primary);
-    outline-offset: 2px;
-}
-
-/* Stop button active state */
-.send-btn.stop-active {
-    color: #e53e3e;
-    /* Red to indicate stop */
-}
-
-.send-btn.stop-active:hover {
-    color: #c53030;
-    /* Darker red on hover */
 }
 
 .message-input {
@@ -256,13 +909,11 @@ body {
     font-family: inherit;
     font-size: 16px;
     outline: none;
-    padding: 10px 4px;
-    /* Larger touch area */
+    padding: 8px 4px;
 }
 
 .message-input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
-    /* Clearer Contrast */
+    color: var(--text-secondary);
 }
 
 /* iOS Safe Area */
@@ -315,7 +966,7 @@ body {
 /* Disabled Input State */
 .input-wrapper.disabled {
     opacity: 0.6;
-    /* pointer-events: none; Removed to allow stop button interaction */
+    pointer-events: none;
 }
 
 .input-wrapper.disabled .message-input {
@@ -327,4 +978,379 @@ body {
     background: rgba(229, 62, 62, 0.1);
     border-left: 3px solid #e53e3e;
     color: #fc8181;
+}
+
+/* ============================================
+   Action Menu (Bottom Sheet)
+   ============================================ */
+
+.action-menu {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: none;
+}
+
+.action-menu.show {
+    display: block;
+}
+
+.menu-backdrop,
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+}
+
+.menu-content {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-secondary);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(100%);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.menu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.menu-close,
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.back-btn {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 16px 20px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 16px;
+    text-align: left;
+    min-height: 56px;
+    /* Touch target */
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.menu-item:last-child {
+    border-bottom: none;
+}
+
+.menu-item:active {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.menu-item i:first-child {
+    width: 20px;
+    text-align: center;
+    font-size: 18px;
+    color: var(--text-secondary);
+}
+
+.menu-item span {
+    flex: 1;
+}
+
+.menu-value {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-right: 8px;
+}
+
+.menu-item .fa-chevron-right {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+/* Language Selection Menu */
+.lang-check {
+    color: var(--accent-primary);
+    opacity: 0;
+}
+
+.lang-option.active .lang-check {
+    opacity: 1;
+}
+
+/* Support Modal */
+.support-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2001;
+    /* Must be > action-menu (2000) */
+    display: none;
+}
+
+.support-modal.show {
+    display: block;
+}
+
+.support-modal .modal-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-secondary);
+    border-radius: 16px;
+    width: 90%;
+    max-width: 400px;
+    animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: 18px;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.support-option {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-primary);
+    font-size: 16px;
+    text-align: left;
+    min-height: 56px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 12px;
+}
+
+.support-option:last-child {
+    margin-bottom: 0;
+}
+
+.support-option:active {
+    background: rgba(255, 255, 255, 0.05);
+    transform: scale(0.98);
+}
+
+.support-option i {
+    width: 24px;
+    text-align: center;
+    font-size: 20px;
+    color: var(--accent-primary);
+}
+
+/* ============================================
+   ChatGPT-Style Action Menu (Dark Box Fix)
+   ============================================ */
+
+/* Wrapper - Keep fullscreen for click handling, but transparent */
+.action-menu {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: transparent !important;
+    /* No background on wrapper */
+    z-index: 2000;
+    display: none;
+    align-items: flex-end;
+    /* Reset alignment */
+    justify-content: flex-start;
+    /* Reset alignment */
+    padding: 0 !important;
+    animation: none !important;
+    pointer-events: auto !important;
+}
+
+.action-menu.show {
+    display: flex !important;
+}
+
+/* Floating Popover - The actual menu */
+.menu-content {
+    position: absolute !important;
+    bottom: 80px !important;
+    /* Above composer */
+    left: 16px !important;
+    width: 250px !important;
+    background: #12121a !important;
+    /* Desktop Sidebar Parity */
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
+    padding: 6px !important;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    animation: scaleIn 0.15s ease-out !important;
+    transform-origin: bottom left;
+    max-height: none !important;
+    height: auto !important;
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* Hide Header */
+.menu-header {
+    display: none !important;
+}
+
+/* Menu Items Styling */
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px !important;
+    background: transparent;
+    border: none;
+    color: #ececec !important;
+    font-size: 14px !important;
+    text-align: left;
+    min-height: auto !important;
+    border-radius: 6px !important;
+    /* Rounded items */
+    border-bottom: none !important;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.menu-item:hover,
+.menu-item:active {
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.menu-item i:first-child {
+    width: 20px;
+    text-align: center;
+    font-size: 16px !important;
+    color: #ececec !important;
+}
+
+/* Hide chevron arrows to match ChatGPT clean look */
+.menu-item i.fa-chevron-right {
+    display: none !important;
+}
+
+/* Transparent backdrop */
+.menu-backdrop {
+    background: transparent !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Hide support modal back buttons per user request */
+#mobileEmailForm .support-option:last-child,
+#mobileCallInfo .support-option:last-child {
+    display: none !important;
+}
+
+/* Language Menu Fixes */
+#languageMenu .menu-content {
+    /* reuse same popover styles */
+    bottom: 80px !important;
+    left: 16px !important;
+}
+
+#languageMenu .menu-header {
+    display: flex !important;
+    justify-content: space-between;
+    padding: 10px 12px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: #ececec !important;
+}
+
+#languageMenu .back-btn {
+    color: #ececec !important;
+}
+
+/* Mobile Support Modal Form - Parity with Desktop */
+#mobileEmailForm input,
+#mobileEmailForm textarea {
+    font-family: 'Inter', sans-serif;
 }

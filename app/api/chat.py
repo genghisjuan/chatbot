@@ -44,6 +44,7 @@ async def chat_endpoint(
     user_message: str = Form(..., min_length=1, max_length=5000),
     conversation_history: str = Form(default="[]", max_length=50000),
     language: str = Form(default="en-US", pattern=r"^[a-z]{2}(-[A-Z]{2})?$"),
+    mode: str = Form(default="chat", pattern=r"^(chat|deal)$"),  # NEW: mode parameter
     file: UploadFile = File(None)
 ):
     try:
@@ -87,7 +88,7 @@ async def chat_endpoint(
         # Query logging is now handled in bot.py to capture is_fallback status
         
         return StreamingResponse(
-            process_chat_stream(chat_input, image_bytes=image_bytes), 
+            process_chat_stream(chat_input, image_bytes=image_bytes, mode=mode),  # Pass mode to bot
             media_type="text/plain"
         )
     except HTTPException:

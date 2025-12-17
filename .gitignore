@@ -66,6 +66,9 @@ Thumbs.db
 # ChromaDB (local vector store - deprecated)
 data/chroma_db/
 
+# KB source documents (ingestion only - not needed in production)
+data/kb_documents/
+
 # Temporary files
 tmp/
 temp/

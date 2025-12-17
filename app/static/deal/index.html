@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deal Assistant</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Marked.js for Markdown Rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Application Styles -->
+    <link rel="stylesheet" href="/static/css/styles.css?v=3">
+    <style>
+        /* Minimal workflow-specific styles - reuse chatbot classes where possible */
+
+        /* HEADER HEIGHT FIX - ensure pixel-perfect match with chatbot */
+        .chat-header {
+            height: 50px !important;
+            padding: 0 24px !important;
+            box-sizing: border-box;
+        }
+
+        /* v1.6: Full-height workflow container */
+        .workflow-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 50px);
+            /* Full viewport minus fixed header */
+            overflow: hidden;
+            padding: 20px;
+            max-width: 100%;
+        }
+
+        /* v2.0: Centered step indicator for single-window layout */
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-bottom: 24px;
+            padding: 12px 0;
+        }
+
+        /* v2.0: Fixed-width step headers */
+        .step {
+            width: 180px;
+            text-align: center;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .step-indicator .step.active {
+            background: var(--accent-color);
+            color: #fff;
+        }
+
+        .step-indicator .step.completed {
+            color: var(--text-color);
+            opacity: 0.7;
+        }
+
+        /* v2.0: Single-column centered layout */
+        .workflow-columns {
+            display: flex;
+            justify-content: center;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* v2.0: Single active window visibility control */
+        .column {
+            display: none;
+            /* Hidden by default */
+            flex-direction: column;
+            width: 1000px;
+            /* Fixed width for consistency - v2.1 increased */
+            max-width: 90%;
+            /* Responsive constraint */
+            height: 100%;
+        }
+
+        .column.active-section {
+            display: flex;
+            /* Show only active column */
+        }
+
+        /* Reuse message styling for cards */
+        .workflow-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            flex: 1;
+            /* Fill column */
+            overflow-y: auto;
+            /* Scroll if content overflows */
+            display: flex;
+            flex-direction: column;
+        }
+
+        .workflow-card h3 {
+            margin: 0 0 16px 0;
+            font-size: 1.1em;
+            color: var(--text-color);
+        }
+
+        .workflow-card .helper-text {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            margin-bottom: 16px;
+        }
+
+        /* Form fields - reuse support modal styles */
+        .form-field {
+            margin-bottom: 16px;
+        }
+
+        .form-field label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            font-size: 0.9em;
+            color: var(--text-color);
+        }
+
+        .form-field input,
+        .form-field select,
+        .form-field textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-primary);
+            color: var(--text-color);
+            font-size: 0.95em;
+            font-family: inherit;
+        }
+
+        .form-field textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .toggles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .toggles label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.9em;
+            color: var(--text-color);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 3em;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .question-item {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .question-item.completed {
+            opacity: 0.6;
+        }
+
+        .question-text {
+            font-weight: 500;
+            margin-bottom: 12px;
+            color: var(--text-color);
+        }
+
+        .answer-preview {
+            font-size: 0.9em;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .why-matters {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .why-matters summary {
+            cursor: pointer;
+            color: var(--accent-color);
+        }
+
+        .battlecard-section {
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .battlecard-section:last-of-type {
+            border-bottom: none;
+        }
+
+        .battlecard-section h4 {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 0 0 12px 0;
+            color: var(--text-color);
+            font-size: 1em;
+        }
+
+        .copy-section {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 0.85em;
+        }
+
+        .copy-section:hover {
+            color: var(--accent-color);
+        }
+
+        .compliance-banner {
+            background: #2d2d2d;
+            border-left: 4px solid #e53e3e;
+            padding: 12px 16px;
+            border-radius: 8px;
+            display: flex;
+            align-items: start;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .compliance-banner i {
+            color: #e53e3e;
+            margin-top: 2px;
+        }
+
+        .compliance-banner p {
+            margin: 0;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+        }
+
+        .objections-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .objections-table tr {
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .objections-table td {
+            padding: 12px 8px;
+            font-size: 0.9em;
+        }
+
+        .objections-table td:first-child {
+            font-weight: 500;
+            width: 35%;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .workflow-columns {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .battlecard-column {
+                grid-column: 1 / -1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .workflow-columns {
+                grid-template-columns: 1fr;
+            }
+
+            .step-indicator {
+                flex-direction: row;
+                overflow-x: auto;
+            }
+        }
+
+        /* ===== PHASE 1 UI POLISH: VISUAL HIERARCHY IMPROVEMENTS ===== */
+
+        /* Change 1: REMOVED - Do not de-emphasize through opacity */
+        /* Battle Card will be highlighted through container composition instead */
+
+        /* Change 2: Promote "Recommended Stack" section - Make it the hero */
+        .battlecard-section[data-section="stack"] {
+            background: linear-gradient(135deg, rgba(69, 123, 247, 0.1), rgba(69, 123, 247, 0.05));
+            border-left: 4px solid var(--accent-color);
+            padding: 20px;
+            margin-bottom: 24px;
+            border-radius: 8px;
+        }
+
+        .battlecard-section[data-section="stack"] h4 {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-bottom: 16px;
+        }
+
+        .battlecard-section[data-section="stack"] ul {
+            margin: 0;
+        }
+
+        .battlecard-section[data-section="stack"] li {
+            font-size: 1.05em;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+
+        /* Change 3: Scenario section - Uniform text color */
+        .battlecard-section[data-section="scenario"] {
+            font-size: 0.9em;
+            /* opacity removed - uniform text color */
+        }
+
+        .battlecard-section[data-section="scenario"] h4 {
+            font-size: 0.95em;
+            font-weight: 500;
+            /* color removed - inherits var(--text-color) */
+        }
+
+        .battlecard-section[data-section="scenario"] p {
+            line-height: 1.5;
+            /* color removed - inherits var(--text-color) */
+        }
+
+        /* Change 4: Establish visual hierarchy for all sections */
+
+        /* Tertiary sections - Uniform text color */
+        /* opacity removed - all sections use same text color */
+
+        .battlecard-section[data-section="pricing"] h4,
+        .battlecard-section[data-section="objections"] h4 {
+            font-size: 0.95em;
+            font-weight: 500;
+        }
+
+        /* Secondary sections (normal prominence) - Why Wins, Next Steps */
+        .battlecard-section[data-section="wins"] h4,
+        .battlecard-section[data-section="next_steps"] h4 {
+            font-weight: 600;
+        }
+
+        /* ===== v1.4: ADMIN KPI CARD STYLING ===== */
+
+        /* Apply JUNA Admin KPI card surface to all three sections */
+        .context-column .workflow-card,
+        .questions-column .workflow-card,
+        .battlecard-column .workflow-card {
+            background: #151A2E;
+            /* JUNA elevated dark */
+            border-radius: 12px;
+            /* JUNA card radius */
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            /* JUNA card elevation */
+            border: 1px solid rgba(180, 187, 207, 0.1);
+            /* Neutral border (inactive) */
+            padding: 24px;
+        }
+
+        /* Active section gets blue border (JUNA primary #6E86FF) */
+        .context-column.active-section .workflow-card,
+        .questions-column.active-section .workflow-card,
+        .battlecard-column.active-section .workflow-card {
+            border-color: #6E86FF;
+            /* JUNA primary color */
+        }
+    </style>
+</head>
+
+<body>
+    <button class="mobile-nav-toggle">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <div class="app-container">
+        <!-- Sidebar - IDENTICAL TO CHATBOT -->
+        <div class="sidebar" id="sidebar">
+            <div class="brand">
+                <img src="/static/logo.png" alt="JUNA" style="max-width: 90%; height: auto;">
+            </div>
+
+            <button class="new-chat-btn" onclick="window.dealApp.resetWorkflow()" aria-label="Start New Deal">
+                <i class="fas fa-plus"></i> New Deal
+            </button>
+
+            <!-- Quick Launch Section -->
+            <div class="history-section">
+                <div class="history-label" role="button" tabindex="0" aria-expanded="true"
+                    aria-controls="quickLaunchList"
+                    onclick="document.getElementById('quickLaunchList').classList.toggle('hidden'); this.setAttribute('aria-expanded', !document.getElementById('quickLaunchList').classList.contains('hidden'));">
+                    <i class="fas fa-rocket"></i>
+                    <span style="flex: 1;">Quick Launch</span>
+                    <i class="fas fa-chevron-down" style="font-size: 0.8em;"></i>
+                </div>
+                <div class="history-list" id="quickLaunchList">
+                    <div class="history-item quick-launch-btn" data-vertical="restaurant">
+                        <i class="fas fa-utensils" style="margin-right: 8px;"></i>
+                        Restaurant Deal
+                    </div>
+                    <div class="history-item quick-launch-btn" data-vertical="retail">
+                        <i class="fas fa-store" style="margin-right: 8px;"></i>
+                        Retail Deal
+                    </div>
+                    <div class="history-item quick-launch-btn" data-vertical="healthcare">
+                        <i class="fas fa-heartbeat" style="margin-right: 8px;"></i>
+                        Healthcare Deal
+                    </div>
+                    <div class="history-item quick-launch-btn" data-vertical="general">
+                        <i class="fas fa-briefcase" style="margin-right: 8px;"></i>
+                        General Deal
+                    </div>
+                </div>
+            </div>
+
+            <!-- Conversations History -->
+            <div class="history-section">
+                <div class="history-label" role="button" tabindex="0" aria-expanded="false"
+                    aria-controls="conversationsList"
+                    onclick="document.getElementById('conversationsList').classList.toggle('hidden'); this.setAttribute('aria-expanded', !document.getElementById('conversationsList').classList.contains('hidden'));">
+                    <i class="fas fa-comments"></i>
+                    <span style="flex: 1;">Conversations</span>
+                    <i class="fas fa-chevron-down" id="conversationsChevron" style="font-size: 0.8em;"></i>
+                </div>
+                <div class="history-list hidden" id="conversationsList">
+                    <div class="history-item">No conversations yet</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Main Workflow Area - REPLACING CHAT BODY -->
+        <div class="main-chat">
+            <div class="chat-header">
+                <div class="chat-title" role="heading" aria-level="1">Deal Assistant</div>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <button id="resetBtn"
+                        style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 8px 12px; font-size: 0.9em;">
+                        <i class="fas fa-redo"></i> Reset
+                    </button>
+                    <div class="status-indicator" aria-live="polite">
+                        <div class="status-dot"></div>
+                        Online
+                    </div>
+                </div>
+            </div>
+
+            <!-- WORKFLOW CONTAINER - REPLACES chat-messages -->
+            <div class="workflow-container" id="workflowContainer">
+                <div class="step-indicator" id="stepIndicator">
+                    <div class="step active" data-step="context">Context</div>
+                    <div class="step" data-step="questions">Questions</div>
+                    <div class="step" data-step="battlecard">Battle Card</div>
+                </div>
+
+                <div class="workflow-columns">
+                    <!-- Context Column -->
+                    <div class="column context-column">
+                        <div class="workflow-card" id="contextCard">
+                            <h3>Deal Context</h3>
+                            <p class="helper-text">Help JUNA understand this merchant so we can tailor the right
+                                approach.</p>
+
+                            <div class="form-field">
+                                <label>Vertical <span style="color: #e53e3e;">*</span></label>
+                                <select id="vertical">
+                                    <option value="">Select vertical...</option>
+                                    <option value="restaurant">Restaurant</option>
+                                    <option value="retail">Retail</option>
+                                    <option value="healthcare">Healthcare</option>
+                                    <option value="general">General / Other</option>
+                                </select>
+                                <div id="verticalCue"
+                                    style="display: none; margin-top: 8px; font-size: 0.85em; color: var(--text-secondary);">
+                                </div>
+                            </div>
+
+                            <div class="form-field">
+                                <label>State</label>
+                                <input type="text" id="state" placeholder="e.g., TX" maxlength="2">
+                            </div>
+
+                            <div class="form-field">
+                                <label>Current Provider</label>
+                                <input type="text" id="currentProvider" placeholder="e.g., Square, Clover">
+                            </div>
+
+                            <div class="form-field" style="margin-top: 20px;">
+                                <label>Monthly Volume</label>
+                                <select id="volume">
+                                    <option value="">Select range...</option>
+                                    <option value="<10k">
+                                        < $10k</option>
+                                    <option value="10k-50k">$10k - $50k</option>
+                                    <option value="50k-250k">$50k - $250k</option>
+                                    <option value="250k+">$250k+</option>
+                                </select>
+                                <div id="volumeCue"
+                                    style="display: none; margin-top: 8px; font-size: 0.85em; color: var(--text-secondary);">
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 20px;">
+                                <label style="display: block; margin-bottom: 8px; font-size: 0.95em;">Revenue
+                                    Streams</label>
+                                <div class="toggles">
+                                    <label><input type="checkbox" id="toggleTips"> Tips</label>
+                                    <label><input type="checkbox" id="toggleMemberships"> Memberships</label>
+                                    <label><input type="checkbox" id="toggleEcommerce"> E-commerce</label>
+                                </div>
+                            </div>
+
+                            <button class="submit-btn" id="startQuestionsBtn" style="width: 100%; margin-top: 20px;">
+                                Start Guided Questions
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Questions Column -->
+                    <div class="column questions-column">
+                        <div class="workflow-card" id="questionsCard">
+                            <h3>Guided Questions <span id="questionCount"
+                                    style="color: var(--text-secondary); font-weight: normal; font-size: 0.9em;"></span>
+                            </h3>
+                            <div id="questionsContent">
+                                <div class="empty-state">
+                                    <i class="fas fa-comments"></i>
+                                    <p>Complete deal context to begin guided questions.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Battle Card Column -->
+                    <div class="column battlecard-column">
+                        <div class="workflow-card" id="battlecardCard">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+                                <h3 style="margin: 0;">Battle Card</h3>
+                                <div style="display: flex; gap: 8px;">
+                                    <button class="copy-section" id="copyTalkTrackBtn" style="display: none;">
+                                        <i class="fas fa-comments"></i> Copy Talk Track
+                                    </button>
+                                    <button class="copy-section" id="copyObjectionsBtn" style="display: none;">
+                                        <i class="fas fa-shield-alt"></i> Copy Objections
+                                    </button>
+                                    <button class="copy-section" id="copyAllBtn" style="display: none;">
+                                        <i class="fas fa-copy"></i> Copy All
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="battlecardContent">
+                                <div class="empty-state">
+                                    <i class="fas fa-file-alt"></i>
+                                    <p>Complete the guided questions to generate your battle card.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Support Modal - IDENTICAL TO CHATBOT -->
+    <div id="supportModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div class="modal-title">Contact Support</div>
+
+            <div class="modal-options">
+                <button class="modal-option-btn" id="emailOptionBtn">
+                    <i class="fas fa-envelope"></i>
+                    Email Support
+                </button>
+                <button class="modal-option-btn" id="callOptionBtn">
+                    <i class="fas fa-phone"></i>
+                    Call Support
+                </button>
+            </div>
+
+            <div id="emailForm" style="display: none;">
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label
+                        style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-color); font-size: 0.95em;">Full
+                        Name</label>
+                    <input type="text" id="supportName"
+                        style="width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em; transition: border-color 0.2s;"
+                        placeholder="John Doe">
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label
+                        style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-color); font-size: 0.95em;">Business
+                        / Client Name</label>
+                    <input type="text" id="supportBusiness"
+                        style="width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em; transition: border-color 0.2s;"
+                        placeholder="Company Inc.">
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label
+                        style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-color); font-size: 0.95em;">Issue
+                        Summary</label>
+                    <textarea id="supportSummary"
+                        style="width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em; resize: vertical; min-height: 120px; font-family: inherit; transition: border-color 0.2s;"
+                        rows="4" placeholder="Please describe your issue..."></textarea>
+                </div>
+                <button class="submit-btn">Submit Request</button>
+            </div>
+
+            <div id="callInfo" style="display: none; text-align: center;">
+                <div style="margin-bottom: 20px;">
+                    <i class="fas fa-phone-alt" style="font-size: 3em; color: #48bb78; margin-bottom: 10px;"></i>
+                    <div style="font-size: 1.2em; font-weight: 600; color: #2d3748;">+1 (555) 123-4567</div>
+                    <div style="font-size: 0.9em; color: #718096;">Available 24/7</div>
+                </div>
+                <p style="font-size: 0.9em; color: #4a5568; margin-bottom: 20px;">
+                    Click below to start a call. A support ticket will be created automatically.
+                </p>
+                <button class="submit-btn" onclick="window.dealApp.startInboundCall()">
+                    <i class="fas fa-phone"></i> Call Now
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal - IDENTICAL TO CHATBOT -->
+    <div id="successModal" class="modal">
+        <div class="modal-content" style="text-align: center;">
+            <span class="close-modal">&times;</span>
+            <div style="font-size: 3em; color: #48bb78; margin-bottom: 20px;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="modal-title">Request Received!</div>
+            <p style="margin-bottom: 20px; color: #4a5568;">
+                Thank you for contacting Payroc Support. We have received your request and a ticket has been created.
+            </p>
+            <div
+                style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+                <div style="font-size: 0.9em; color: #718096; margin-bottom: 5px;">Ticket ID</div>
+                <div id="successTicketId"
+                    style="font-size: 1.5em; font-weight: bold; color: #2d3748; letter-spacing: 1px;">#00000000</div>
+            </div>
+            <p style="font-size: 0.9em; color: #718096; margin-bottom: 20px;">
+                A confirmation email has been sent to <span style="font-weight: 600;">jhamilton831@gmail.com</span>.
+            </p>
+            <button class="submit-btn">Close</button>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script src="/static/deal/deal.js"></script>
+</body>
+
+</html>

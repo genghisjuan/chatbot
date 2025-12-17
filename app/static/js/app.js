@@ -512,12 +512,9 @@ class ChatApp {
         // Toggle Logic
         const isActive = btn.classList.contains('active-up') || btn.classList.contains('active-down');
 
-        let newRating = rating;
-
         if (isActive) {
-            // Toggle Off
+            // Toggle Off - just update UI, don't send to backend
             btn.classList.remove('active-up', 'active-down');
-            newRating = 'none'; // Backend will interpret this as delete
 
             // Remove from storage
             const ratings = this.loadRatings();
@@ -525,19 +522,21 @@ class ChatApp {
                 delete ratings[msgId];
                 sessionStorage.setItem('message_ratings', JSON.stringify(ratings));
             }
-        } else {
-            // Toggle On or Switch
-            btn.classList.add(rating === 'up' ? 'active-up' : 'active-down');
-            otherBtn.classList.remove('active-up', 'active-down');
-
-            // Save new rating
-            this.saveRating(msgId, rating);
+            // Return early - no backend call for deselecting
+            return;
         }
+
+        // Toggle On or Switch
+        btn.classList.add(rating === 'up' ? 'active-up' : 'active-down');
+        otherBtn.classList.remove('active-up', 'active-down');
+
+        // Save new rating
+        this.saveRating(msgId, rating);
 
         try {
             const payload = {
                 message_id: msgId,
-                rating: newRating, // 'up', 'down', or 'none'
+                rating: rating, // 'up' or 'down' only
                 user_query: wrapper.dataset.userQuery || '',
                 bot_response: wrapper.dataset.botResponse || ''
             };
