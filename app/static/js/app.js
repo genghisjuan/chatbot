@@ -1,5 +1,5 @@
 /**
- * JUNA Chatbot Application Logic
+ * Support Chatbot Application Logic
  * Encapsulates chat functionality, API communication, and UI state.
  */
 
@@ -240,7 +240,26 @@ class ChatApp {
         const text = this.userInput.value.trim();
         const file = this.imageInput.files[0];
 
+        // VALIDATION: Images must be accompanied by text (V1 constraint)
+        if (file && !text) {
+            this.addMessage("Text required with image", 'bot');
+            return;
+        }
+
         if (!text && !file) return;
+
+        // Ensure botText is in scope for catch/finally
+        let botText = '';
+
+        // Client-side file size guard (10MB) to avoid uploading huge files at all
+        const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+        if (file && file.size > MAX_UPLOAD_BYTES) {
+            alert('File too large (max 10MB)');
+            this.removeImage();
+            this.imageInput.value = '';
+            this.userInput.focus();
+            return;
+        }
 
         this.addMessage(text, 'user', false, file);
         this.userInput.value = '';
@@ -253,7 +272,7 @@ class ChatApp {
 
         try {
             const formData = new FormData();
-            formData.append('user_message', text || " ");
+            formData.append('user_message', text);  // No placeholder - send clean input
             formData.append('conversation_history', JSON.stringify(this.conversationHistory));
             formData.append('language', this.languageSelect.value);
             if (file) formData.append('file', file);
@@ -268,15 +287,28 @@ class ChatApp {
                 signal: this.abortController.signal
             });
 
-            if (!response.ok) throw new Error('Network response was not ok');
+            // Explicitly handle 413 so users see the real reason
+            if (!response.ok) {
+                if (response.status === 413) {
+                    let msg = 'File too large (max 10MB)';
+                    try {
+                        const err = await response.json();
+                        if (err && err.detail) msg = err.detail;
+                    } catch (e) {
+                        // ignore JSON parse failures, keep default msg
+                    }
+                    this.addMessage(msg, 'bot');
+                    return;
+                }
+
+                throw new Error('Network response was not ok');
+            }
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
             const botMsgId = Date.now().toString();
-            // Pass the ID to addMessage so it's stored on the DOM element
             const botContentDiv = this.addMessage('', 'bot', false, null, botMsgId);
-            let botText = '';
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -301,17 +333,15 @@ class ChatApp {
 
             const cleanBotText = botText.replace(/<<SUGGESTIONS>>.*$/s, '').trim();
 
-            // Fix for Feedback: Update wrapper dataset with final text so "First Rating" works
             const wrapper = botContentDiv.closest('.message-wrapper');
             if (wrapper) {
                 wrapper.dataset.botResponse = cleanBotText;
-                wrapper.dataset.userQuery = text; // Ensure user query is also captured
+                wrapper.dataset.userQuery = text;
             }
 
             this.conversationHistory.push({ role: "assistant", content: cleanBotText, id: botMsgId });
             this.saveConversation();
 
-            // Speak (Non-critical)
             if (!this.isMuted) {
                 try {
                     this.speak(cleanBotText);
@@ -320,7 +350,6 @@ class ChatApp {
                 }
             }
 
-            // Persist to Backend and Storage (Non-critical)
             try {
                 if (this.conversationHistory.length === 2) {
                     this.saveConversationToHistory(text);
@@ -330,7 +359,6 @@ class ChatApp {
             } catch (e) {
                 console.error('History Save Error:', e);
             }
-
         } catch (error) {
             if (error.name !== 'AbortError') {
                 console.error('Error:', error);

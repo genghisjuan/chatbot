@@ -1,5 +1,5 @@
 /**
- * JUNA Mobile - Chat Client
+ * Mobile Chat Client
  * Phase 2: Full chat functionality with streaming
  */
 
@@ -35,7 +35,7 @@ class MobileChat {
     }
 
     init() {
-        console.log('JUNA Mobile Chat initialized');
+        console.log('Mobile Chat initialized');
 
         // Load TTS voices (matching desktop)
         this.loadTTSVoices();

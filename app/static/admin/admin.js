@@ -1,5 +1,5 @@
 /**
- * Juna Admin Dashboard Logic
+ * Admin Dashboard Logic
  * Handles API integration, Charts, and UI State.
  */
 
@@ -28,7 +28,7 @@ const state = {
 };
 
 // --- Date Filter Persistence ---
-const FILTER_STORAGE_KEY = 'juna_admin_date_filter_v1';
+const FILTER_STORAGE_KEY = 'admin_date_filter_v1';
 
 function getTodayRange() {
     const today = new Date().toISOString().split('T')[0];

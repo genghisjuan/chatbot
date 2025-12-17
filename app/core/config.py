@@ -146,6 +146,18 @@ class Settings(BaseSettings):
         """Strip whitespace from AWS credentials."""
         return v.strip() if v else v
     
+    # Security: Hardening Flags (Patch B)
+    # These flags are opt-in security measures with NO behavior change when disabled
+    SANITIZE_ERRORS: bool = Field(
+        default=False,
+        description="If True, sanitize exception details in API responses (prevents info leakage). Server logs still contain full traces."
+    )
+    
+    STRICT_HISTORY_VALIDATION: bool = Field(
+        default=False,
+        description="If True, enforce strict validation on conversation_history structure to prevent DoS via pathological payloads."
+    )
+    
     # Pydantic v2 configuration
     model_config = SettingsConfigDict(
         env_file=".env",

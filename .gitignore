@@ -73,6 +73,9 @@ data/kb_documents/
 tmp/
 temp/
 *.tmp
+test_output*.txt
+*_output.txt
+ticket_counter.txt
 
 # Docker
 .dockerignore
