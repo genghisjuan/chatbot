@@ -92,6 +92,32 @@ class Settings(BaseSettings):
         description="Name of Pinecone index for embeddings"
     )
 
+    # ============ RERANKING SETTINGS (OPTIONAL) ============
+    # Jina Reranker: Free tier with 1M tokens/month
+    # Falls back to OpenAI GPT-4o-mini if Jina unavailable
+    JINA_API_KEY: str = Field(
+        default="",
+        description="Jina API key for reranking (free tier: 1M tokens/month)"
+    )
+    RERANK_ENABLED: bool = Field(
+        default=True,
+        description="Enable reranking globally"
+    )
+    RERANK_FALLBACK_TO_OPENAI: bool = Field(
+        default=True,
+        description="Use OpenAI for reranking if Jina unavailable"
+    )
+    
+    # ============ GROUNDING SETTINGS (OPTIONAL) ============
+    GROUNDING_ENABLED: bool = Field(
+        default=True,
+        description="Enable citation tracking"
+    )
+    MIN_COVERAGE_SCORE: float = Field(
+        default=0.5,
+        description="Minimum % of results that must have valid sources (0-1)"
+    )
+
     # Email / SMTP Configuration (Optional)
     SMTP_SERVER: Optional[str] = Field(default=None, description="SMTP Server (e.g., smtp.gmail.com)")
     SMTP_PORT: int = Field(default=587, description="SMTP Port (e.g., 587)")
